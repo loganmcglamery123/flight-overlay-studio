@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "types": ["vite/client", "node"]
+  },
+  "include": [
+    "app/page.tsx",
+    "components/**/*.tsx",
+    "github/**/*.tsx",
+    "lib/**/*.ts",
+    "vite.github.config.ts"
+  ],
+  "exclude": ["db", "dist", "dist-github", "node_modules", "worker"]
+}

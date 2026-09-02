@@ -419,6 +419,88 @@ select {
   font-size: 0.7rem;
 }
 
+.overlay-size-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem;
+  margin-top: 1.15rem;
+}
+
+.overlay-size-grid .slider-field {
+  margin-top: 0;
+}
+
+.graph-layout-field {
+  margin-top: 1.2rem;
+}
+
+.graph-settings {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1.15rem;
+}
+
+.graph-control-card {
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.graph-control-card__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.graph-control-card__heading h3 {
+  margin: 0;
+  color: #edf1f2;
+  font-size: 0.82rem;
+  font-weight: 720;
+}
+
+.graph-control-card__heading p {
+  margin: 0.24rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.69rem;
+  line-height: 1.4;
+}
+
+.graph-swatch {
+  width: 0.72rem;
+  height: 0.72rem;
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.035);
+}
+
+.graph-control-card .slider-field {
+  margin-top: 0.95rem;
+}
+
+.altitude-label-controls {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(39, 50, 56, 0.72);
+}
+
+.altitude-label-controls > p {
+  margin: 0 0 0.75rem;
+  color: #cbd3d6;
+  font-size: 0.76rem;
+}
+
+.altitude-label-controls > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
 .preview-column {
   min-width: 0;
   align-self: start;
@@ -590,8 +672,13 @@ select {
   }
 
   .stats-grid,
-  .two-column-fields {
+  .two-column-fields,
+  .overlay-size-grid {
     grid-template-columns: 1fr;
+  }
+
+  .altitude-label-controls > div {
+    grid-template-columns: 1fr 1fr;
   }
 
   .export-bar {

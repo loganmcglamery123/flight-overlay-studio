@@ -36,6 +36,7 @@ import {
   DEFAULT_SETTINGS,
   renderComposite,
   STAT_OPTIONS,
+  type GraphLayout,
   type MediaFit,
   type OverlayPosition,
   type OverlaySettings,
@@ -111,6 +112,62 @@ function UploadCard({ id, title, hint, accept, icon, loadedLabel, onFile }: Uplo
   );
 }
 
+type ColorFieldProps = {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+};
+
+function ColorField({ id, label, value, onChange }: ColorFieldProps) {
+  return (
+    <div className="color-field">
+      <Label htmlFor={id}>{label}</Label>
+      <div>
+        <input
+          id={id}
+          type="color"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <span>{value.toUpperCase()}</span>
+      </div>
+    </div>
+  );
+}
+
+type RangeFieldProps = {
+  id: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  display: string;
+  disabled?: boolean;
+  onChange: (value: number) => void;
+};
+
+function RangeField({ id, label, value, min, max, step, display, disabled, onChange }: RangeFieldProps) {
+  return (
+    <div className="slider-field">
+      <div>
+        <Label htmlFor={id}>{label}</Label>
+        <span>{display}</span>
+      </div>
+      <Slider
+        id={id}
+        min={min}
+        max={max}
+        step={step}
+        value={[value]}
+        disabled={disabled}
+        onValueChange={(next) => onChange(next[0])}
+      />
+    </div>
+  );
+}
+
 function formatDuration(seconds: number) {
   if (!Number.isFinite(seconds)) return "0:00";
   const rounded = Math.max(0, Math.round(seconds));
@@ -179,12 +236,11 @@ function waitForSeek(video: HTMLVideoElement, time: number) {
   });
 }
 
-function bestRecorderType() {
+function bestMp4RecorderType() {
   const candidates = [
-    "video/webm;codecs=vp9,opus",
-    "video/webm;codecs=vp8,opus",
-    "video/webm;codecs=vp9",
-    "video/webm",
+    "video/mp4",
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4;codecs=avc1.42E01E",
   ];
   return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
 }
@@ -377,9 +433,9 @@ export default function Home() {
       canvas.width = media.width;
       canvas.height = media.height;
       renderComposite(canvas, imageRef.current, analysis, settings);
-      const blob = await canvasToBlob(canvas);
-      downloadBlob(blob, `${safeName(settings.title || media.file.name)}-overlay.png`);
-      setMessage("Photo overlay downloaded at the original image resolution.");
+      const blob = await canvasToBlob(canvas, "image/jpeg", 1);
+      downloadBlob(blob, `${safeName(settings.title || media.file.name)}-overlay.jpg`);
+      setMessage("Photo overlay downloaded as a full-resolution, maximum-quality JPEG.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The photo could not be exported.");
     }
@@ -399,6 +455,11 @@ export default function Home() {
     if (!analysis || !media || media.kind !== "video" || !video) return;
     if (!("MediaRecorder" in window) || !(HTMLCanvasElement.prototype as HTMLCanvasElement & { captureStream?: unknown }).captureStream) {
       setError("Video export is not supported here. Use a current Chrome or Edge browser.");
+      return;
+    }
+    const mp4MimeType = bestMp4RecorderType();
+    if (!mp4MimeType) {
+      setError("This browser cannot record MP4 video. Try the latest Chrome, Edge, or Safari.");
       return;
     }
 
@@ -431,7 +492,7 @@ export default function Home() {
       }
 
       const recorder = new MediaRecorder(activeOutputStream, {
-        mimeType: bestRecorderType(),
+        mimeType: mp4MimeType,
         videoBitsPerSecond: media.width >= 2_560 ? 18_000_000 : media.width >= 1_920 ? 10_000_000 : 6_000_000,
       });
       exportRef.current.recorder = recorder;
@@ -447,7 +508,7 @@ export default function Home() {
             reject(new Error("Video export cancelled."));
             return;
           }
-          resolve(new Blob(chunks, { type: recorder.mimeType || "video/webm" }));
+          resolve(new Blob(chunks, { type: recorder.mimeType || "video/mp4" }));
         }, { once: true });
       });
 
@@ -465,11 +526,11 @@ export default function Home() {
       await video.play();
       paint();
       const blob = await recordingResult;
-      downloadBlob(blob, `${safeName(settings.title || media.file.name)}-overlay.webm`);
+      downloadBlob(blob, `${safeName(settings.title || media.file.name)}-overlay.mp4`);
       setMessage(
         includeAudio && activeOutputStream.getAudioTracks().length === 0
           ? "Video downloaded without audio because this browser did not expose the source audio track."
-          : "Video overlay downloaded as WebM.",
+          : "Video overlay downloaded as MP4.",
       );
     } catch (caught) {
       const text = caught instanceof Error ? caught.message : "The video could not be exported.";
@@ -738,61 +799,175 @@ export default function Home() {
             </div>
 
             <div className="two-column-fields">
-              <div className="color-field">
-                <Label htmlFor="accent-color">Accent</Label>
-                <div>
-                  <input
-                    id="accent-color"
-                    type="color"
-                    value={settings.accentColor}
-                    onChange={(event) => updateSettings("accentColor", event.target.value)}
-                  />
-                  <span>{settings.accentColor.toUpperCase()}</span>
-                </div>
-              </div>
-              <div className="color-field">
-                <Label htmlFor="text-color">Text</Label>
-                <div>
-                  <input
-                    id="text-color"
-                    type="color"
-                    value={settings.textColor}
-                    onChange={(event) => updateSettings("textColor", event.target.value)}
-                  />
-                  <span>{settings.textColor.toUpperCase()}</span>
-                </div>
-              </div>
+              <ColorField
+                id="accent-color"
+                label="Accent"
+                value={settings.accentColor}
+                onChange={(value) => updateSettings("accentColor", value)}
+              />
+              <ColorField
+                id="text-color"
+                label="Text"
+                value={settings.textColor}
+                onChange={(value) => updateSettings("textColor", value)}
+              />
             </div>
 
-            <div className="slider-field">
-              <div>
-                <Label htmlFor="overlay-scale">Overlay size</Label>
-                <span>{Math.round(settings.scale * 100)}%</span>
-              </div>
-              <Slider
+            <div className="overlay-size-grid">
+              <RangeField
+                id="overlay-width"
+                label="Overlay width"
+                min={0.38}
+                max={0.9}
+                step={0.02}
+                value={settings.overlayWidth}
+                display={`${Math.round(settings.overlayWidth * 100)}%`}
+                onChange={(value) => updateSettings("overlayWidth", value)}
+              />
+              <RangeField
                 id="overlay-scale"
-                min={0.7}
+                label="Text & spacing"
+                min={0.65}
                 max={1.35}
                 step={0.05}
-                value={[settings.scale]}
-                onValueChange={(value) => updateSettings("scale", value[0])}
+                value={settings.scale}
+                display={`${Math.round(settings.scale * 100)}%`}
+                onChange={(value) => updateSettings("scale", value)}
               />
             </div>
-            <div className="slider-field">
-              <div>
-                <Label htmlFor="panel-opacity">Panel opacity</Label>
-                <span>{Math.round(settings.panelOpacity * 100)}%</span>
+
+            {settings.showTrack && settings.showElevation && (
+              <div className="field-stack graph-layout-field">
+                <Label htmlFor="graph-layout-select">Graph arrangement</Label>
+                <Select
+                  value={settings.graphLayout}
+                  onValueChange={(value) => updateSettings("graphLayout", value as GraphLayout)}
+                >
+                  <SelectTrigger id="graph-layout-select" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="stacked">Elevation below track</SelectItem>
+                    <SelectItem value="side-by-side">Side by side</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <Slider
-                id="panel-opacity"
-                min={0.2}
-                max={0.95}
-                step={0.05}
-                value={[settings.panelOpacity]}
-                disabled={settings.style === "minimal"}
-                onValueChange={(value) => updateSettings("panelOpacity", value[0])}
-              />
+            )}
+
+            <div className="graph-settings">
+              {settings.showTrack && (
+                <section className="graph-control-card" aria-labelledby="track-controls-title">
+                  <div className="graph-control-card__heading">
+                    <div>
+                      <h3 id="track-controls-title">Track outline</h3>
+                      <p>Includes takeoff and landing markers.</p>
+                    </div>
+                    <span className="graph-swatch" style={{ background: settings.trackColor }} aria-hidden="true" />
+                  </div>
+                  <ColorField
+                    id="track-color"
+                    label="Line color"
+                    value={settings.trackColor}
+                    onChange={(value) => updateSettings("trackColor", value)}
+                  />
+                  <RangeField
+                    id="track-line-width"
+                    label="Line width"
+                    min={1}
+                    max={8}
+                    step={0.5}
+                    value={settings.trackLineWidth}
+                    display={`${settings.trackLineWidth.toFixed(1)} px`}
+                    onChange={(value) => updateSettings("trackLineWidth", value)}
+                  />
+                  <RangeField
+                    id="track-height"
+                    label="Track size"
+                    min={0.6}
+                    max={1.7}
+                    step={0.05}
+                    value={settings.trackScale}
+                    display={`${Math.round(settings.trackScale * 100)}%`}
+                    onChange={(value) => updateSettings("trackScale", value)}
+                  />
+                </section>
+              )}
+
+              {settings.showElevation && (
+                <section className="graph-control-card" aria-labelledby="elevation-controls-title">
+                  <div className="graph-control-card__heading">
+                    <div>
+                      <h3 id="elevation-controls-title">Altitude graph</h3>
+                      <p>Style the profile and choose its labels.</p>
+                    </div>
+                    <span className="graph-swatch" style={{ background: settings.elevationColor }} aria-hidden="true" />
+                  </div>
+                  <ColorField
+                    id="elevation-color"
+                    label="Line color"
+                    value={settings.elevationColor}
+                    onChange={(value) => updateSettings("elevationColor", value)}
+                  />
+                  <RangeField
+                    id="elevation-line-width"
+                    label="Line width"
+                    min={1}
+                    max={8}
+                    step={0.5}
+                    value={settings.elevationLineWidth}
+                    display={`${settings.elevationLineWidth.toFixed(1)} px`}
+                    onChange={(value) => updateSettings("elevationLineWidth", value)}
+                  />
+                  <RangeField
+                    id="elevation-height"
+                    label="Graph height"
+                    min={0.6}
+                    max={1.7}
+                    step={0.05}
+                    value={settings.elevationScale}
+                    display={`${Math.round(settings.elevationScale * 100)}%`}
+                    onChange={(value) => updateSettings("elevationScale", value)}
+                  />
+                  <div className="altitude-label-controls" role="group" aria-labelledby="altitude-labels-title">
+                    <p id="altitude-labels-title">Altitude labels</p>
+                    <div>
+                      {[
+                        ["start", "Start", settings.showStartAltitude, "showStartAltitude"],
+                        ["max", "Maximum", settings.showMaxAltitude, "showMaxAltitude"],
+                        ["landing", "Landing", settings.showLandingAltitude, "showLandingAltitude"],
+                      ].map(([key, label, checked, settingKey]) => {
+                        const id = `altitude-label-${key}`;
+                        return (
+                          <div className="stat-choice" key={key as string}>
+                            <Checkbox
+                              id={id}
+                              checked={checked as boolean}
+                              onCheckedChange={(value) => updateSettings(
+                                settingKey as "showStartAltitude" | "showMaxAltitude" | "showLandingAltitude",
+                                value === true,
+                              )}
+                            />
+                            <Label htmlFor={id}>{label as string}</Label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </section>
+              )}
             </div>
+
+            <RangeField
+              id="panel-opacity"
+              label="Panel opacity"
+              min={0.2}
+              max={0.95}
+              step={0.05}
+              value={settings.panelOpacity}
+              display={`${Math.round(settings.panelOpacity * 100)}%`}
+              disabled={settings.style === "minimal"}
+              onChange={(value) => updateSettings("panelOpacity", value)}
+            />
 
             {media?.kind === "video" && (
               <div className="switch-row switch-row--inset">
@@ -859,8 +1034,8 @@ export default function Home() {
               <h2>{media?.kind === "video" ? "Export video" : "Export photo"}</h2>
               <p>
                 {media?.kind === "video"
-                  ? "WebM export runs in real time and stays on this device."
-                  : "PNG export uses the original photo resolution."}
+                  ? "MP4 export runs in real time and stays on this device."
+                  : "JPEG export uses the original resolution and maximum quality."}
               </p>
               {exporting && (
                 <div className="export-progress" aria-label={`Video export ${Math.round(exportProgress * 100)} percent complete`}>
@@ -879,7 +1054,7 @@ export default function Home() {
                 onClick={media?.kind === "video" ? exportVideo : exportImage}
               >
                 <Download aria-hidden="true" />
-                {media?.kind === "video" ? "Download WebM" : "Download PNG"}
+                {media?.kind === "video" ? "Download MP4" : "Download JPG"}
               </Button>
             )}
           </div>

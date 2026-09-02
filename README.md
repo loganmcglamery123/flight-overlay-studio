@@ -7,14 +7,16 @@ Everything runs in the browser. Uploaded flight logs and media are not sent to a
 ## What it does
 
 - Parses standard IGC `B` records directly in the browser
-- Draws the flight track and an elevation profile
+- Draws the flight track and an elevation profile in a stacked or side-by-side layout
 - Calculates total track length, a three-turnpoint route estimate, a triangle estimate, duration, average speed, maximum elevation, elevation gain, maximum climb, and maximum sink
 - Switches between metric and imperial units
 - Lets the user choose which elements and statistics appear
 - Supports dark glass, light glass, and panel-free styles
-- Adjusts overlay position, size, opacity, text color, accent color, and media fit
-- Downloads full-resolution photos as PNG
-- Records videos as WebM in real time in supported browsers
+- Adjusts overlay width, content scale, position, opacity, text color, accent color, and media fit
+- Gives the track and altitude graph independent colors, line widths, and sizes
+- Adds optional start, maximum, and landing altitude labels in the selected unit system
+- Downloads full-resolution photos as maximum-quality JPEG files
+- Records videos as MP4 in real time when the browser supports MP4 MediaRecorder output
 - Deploys automatically to GitHub Pages after each push to `main`
 
 ## Publish on GitHub Pages
@@ -90,8 +92,8 @@ The optimized open-distance and triangle values are estimates for a visual overl
 
 ## Browser notes
 
-- Photo export works in current versions of the major browsers.
-- Video export is most reliable in current Chrome or Edge and produces a WebM file.
+- Photo export keeps the source pixel dimensions and uses the browser's maximum JPEG quality setting. JPEG encoding is still lossy, so it cannot be byte-for-byte identical to the source.
+- MP4 video export depends on the codecs exposed by the browser. The app checks support before recording and shows a compatibility message instead of creating a mislabeled file.
 - Video export runs in real time. A five-minute source takes about five minutes to record.
 - Original audio is included when the browser exposes the video's audio track. If it does not, the exported video is silent.
 - Very large or 4K videos can use substantial memory. Closing other media-heavy tabs helps.

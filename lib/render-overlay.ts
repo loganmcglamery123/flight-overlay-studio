@@ -4,6 +4,7 @@ export type UnitSystem = "metric" | "imperial";
 export type OverlayPosition = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 export type OverlayStyle = "glass" | "light" | "minimal";
 export type MediaFit = "cover" | "contain";
+export type GraphLayout = "side-by-side" | "stacked";
 export type StatKey =
   | "totalDistance"
   | "openDistance"
@@ -23,8 +24,19 @@ export type OverlaySettings = {
   fit: MediaFit;
   accentColor: string;
   textColor: string;
+  trackColor: string;
+  elevationColor: string;
   panelOpacity: number;
   scale: number;
+  overlayWidth: number;
+  graphLayout: GraphLayout;
+  trackScale: number;
+  elevationScale: number;
+  trackLineWidth: number;
+  elevationLineWidth: number;
+  showStartAltitude: boolean;
+  showMaxAltitude: boolean;
+  showLandingAltitude: boolean;
   showTrack: boolean;
   showElevation: boolean;
   enabledStats: StatKey[];
@@ -50,8 +62,19 @@ export const DEFAULT_SETTINGS: OverlaySettings = {
   fit: "cover",
   accentColor: "#d9ff43",
   textColor: "#ffffff",
+  trackColor: "#ff6b2c",
+  elevationColor: "#ffffff",
   panelOpacity: 0.72,
   scale: 1,
+  overlayWidth: 0.62,
+  graphLayout: "stacked",
+  trackScale: 1,
+  elevationScale: 1,
+  trackLineWidth: 3,
+  elevationLineWidth: 2.5,
+  showStartAltitude: true,
+  showMaxAltitude: true,
+  showLandingAltitude: true,
   showTrack: true,
   showElevation: true,
   enabledStats: [
@@ -180,8 +203,9 @@ function drawTrack(
   y: number,
   width: number,
   height: number,
-  accent: string,
+  color: string,
   lineScale: number,
+  lineWidth: number,
 ) {
   if (points.length < 2) return;
   const sampled = points.length <= 900
@@ -213,25 +237,40 @@ function drawTrack(
     if (index === 0) context.moveTo(px, py);
     else context.lineTo(px, py);
   });
-  context.strokeStyle = accent;
-  context.lineWidth = Math.max(2, 3 * lineScale);
+  context.strokeStyle = color;
+  context.lineWidth = Math.max(1, lineWidth * lineScale);
   context.lineJoin = "round";
   context.lineCap = "round";
-  context.shadowColor = rgba(accent, 0.42);
+  context.shadowColor = rgba(color, 0.42);
   context.shadowBlur = 8 * lineScale;
   context.stroke();
   context.shadowBlur = 0;
 
   const first = projected[0];
   const last = projected.at(-1)!;
-  for (const [point, fill] of [[first, accent], [last, "#ffffff"]] as const) {
-    const px = offsetX + (point.x - minX) * fitScale;
-    const py = offsetY + (maxY - point.y) * fitScale;
-    context.beginPath();
-    context.arc(px, py, Math.max(3, 4.5 * lineScale), 0, Math.PI * 2);
-    context.fillStyle = fill;
-    context.fill();
-  }
+  const firstX = offsetX + (first.x - minX) * fitScale;
+  const firstY = offsetY + (maxY - first.y) * fitScale;
+  const markerRadius = Math.max(3, (4.5 + lineWidth * 0.35) * lineScale);
+  context.beginPath();
+  context.arc(firstX, firstY, markerRadius, 0, Math.PI * 2);
+  context.fillStyle = color;
+  context.fill();
+  context.beginPath();
+  context.arc(firstX, firstY, markerRadius * 0.42, 0, Math.PI * 2);
+  context.fillStyle = "rgba(8, 11, 14, 0.9)";
+  context.fill();
+
+  const lastX = offsetX + (last.x - minX) * fitScale;
+  const lastY = offsetY + (maxY - last.y) * fitScale;
+  const crossRadius = markerRadius * 1.1;
+  context.beginPath();
+  context.moveTo(lastX - crossRadius, lastY - crossRadius);
+  context.lineTo(lastX + crossRadius, lastY + crossRadius);
+  context.moveTo(lastX + crossRadius, lastY - crossRadius);
+  context.lineTo(lastX - crossRadius, lastY + crossRadius);
+  context.strokeStyle = color;
+  context.lineWidth = Math.max(1.5, lineWidth * lineScale);
+  context.stroke();
   context.restore();
 }
 
@@ -246,42 +285,103 @@ function drawElevation(
   y: number,
   width: number,
   height: number,
-  accent: string,
+  color: string,
+  labelColor: string,
   lineScale: number,
+  lineWidth: number,
+  units: UnitSystem,
+  labels: { start: boolean; max: boolean; landing: boolean },
 ) {
   if (points.length < 2) return;
   const sampled = points.length <= 500
     ? points
     : Array.from({ length: 500 }, (_, index) => points[Math.round((index * (points.length - 1)) / 499)]);
-  const minAltitude = Math.min(...sampled.map((point) => point.smoothedAltitude));
-  const maxAltitude = Math.max(...sampled.map((point) => point.smoothedAltitude));
+  const minAltitude = Math.min(...points.map((point) => point.smoothedAltitude));
+  const maxAltitude = Math.max(...points.map((point) => point.smoothedAltitude));
   const range = Math.max(1, maxAltitude - minAltitude);
-  const totalDistance = Math.max(1, sampled.at(-1)!.cumulativeDistance);
-  const pad = 8 * lineScale;
-  const baseline = y + height - pad;
+  const totalDistance = Math.max(1, points.at(-1)!.cumulativeDistance);
+  const horizontalPadding = 10 * lineScale;
+  const topPadding = labels.max ? 29 * lineScale : 8 * lineScale;
+  const bottomPadding = labels.start || labels.landing ? 28 * lineScale : 8 * lineScale;
+  const plotLeft = x + horizontalPadding;
+  const plotRight = x + width - horizontalPadding;
+  const plotTop = y + topPadding;
+  const baseline = y + height - bottomPadding;
+  const plotWidth = Math.max(1, plotRight - plotLeft);
+  const plotHeight = Math.max(1, baseline - plotTop);
+  const pointPosition = (point: FlightPoint) => ({
+    x: plotLeft + (point.cumulativeDistance / totalDistance) * plotWidth,
+    y: baseline - ((point.smoothedAltitude - minAltitude) / range) * plotHeight,
+  });
 
   context.save();
   const line = new Path2D();
   sampled.forEach((point, index) => {
-    const px = x + pad + (point.cumulativeDistance / totalDistance) * (width - pad * 2);
-    const py = baseline - ((point.smoothedAltitude - minAltitude) / range) * (height - pad * 2);
-    if (index === 0) line.moveTo(px, py);
-    else line.lineTo(px, py);
+    const position = pointPosition(point);
+    if (index === 0) line.moveTo(position.x, position.y);
+    else line.lineTo(position.x, position.y);
   });
 
   const fill = new Path2D(line);
-  fill.lineTo(x + width - pad, baseline);
-  fill.lineTo(x + pad, baseline);
+  fill.lineTo(plotRight, baseline);
+  fill.lineTo(plotLeft, baseline);
   fill.closePath();
   const gradient = context.createLinearGradient(0, y, 0, y + height);
-  gradient.addColorStop(0, rgba(accent, 0.34));
-  gradient.addColorStop(1, rgba(accent, 0.02));
+  gradient.addColorStop(0, rgba(color, 0.34));
+  gradient.addColorStop(1, rgba(color, 0.025));
   context.fillStyle = gradient;
   context.fill(fill);
-  context.strokeStyle = accent;
-  context.lineWidth = Math.max(2, 2.5 * lineScale);
+  context.strokeStyle = color;
+  context.lineWidth = Math.max(1, lineWidth * lineScale);
   context.lineJoin = "round";
+  context.lineCap = "round";
   context.stroke(line);
+
+  const labelFontSize = Math.max(8, 11.5 * lineScale);
+  const drawLabel = (value: number, labelX: number, labelY: number, align: CanvasTextAlign) => {
+    const label = formatAltitude(value, units);
+    context.textAlign = align;
+    context.textBaseline = "alphabetic";
+    context.font = `700 ${labelFontSize}px ui-sans-serif, system-ui, sans-serif`;
+    context.lineJoin = "round";
+    context.strokeStyle = "rgba(0,0,0,0.78)";
+    context.lineWidth = Math.max(2, 3.2 * lineScale);
+    context.strokeText(label, labelX, labelY, width * 0.42);
+    context.fillStyle = labelColor;
+    context.fillText(label, labelX, labelY, width * 0.42);
+  };
+  const drawPoint = (point: FlightPoint, markerColor = color) => {
+    const position = pointPosition(point);
+    context.beginPath();
+    context.arc(position.x, position.y, Math.max(2.5, 3.2 * lineScale), 0, Math.PI * 2);
+    context.fillStyle = markerColor;
+    context.fill();
+    context.strokeStyle = "rgba(0,0,0,0.65)";
+    context.lineWidth = Math.max(1, 1.4 * lineScale);
+    context.stroke();
+    return position;
+  };
+
+  const start = points[0];
+  const landing = points.at(-1)!;
+  const highest = points.reduce((best, point) => (
+    point.smoothedAltitude > best.smoothedAltitude ? point : best
+  ));
+
+  if (labels.start) {
+    drawPoint(start);
+    drawLabel(start.smoothedAltitude, plotLeft, y + height - 4 * lineScale, "left");
+  }
+  if (labels.landing) {
+    drawPoint(landing);
+    drawLabel(landing.smoothedAltitude, plotRight, y + height - 4 * lineScale, "right");
+  }
+  if (labels.max) {
+    const position = drawPoint(highest);
+    const edgeInset = 46 * lineScale;
+    const clampedX = Math.min(plotRight - edgeInset, Math.max(plotLeft + edgeInset, position.x));
+    drawLabel(highest.smoothedAltitude, clampedX, y + 17 * lineScale, "center");
+  }
   context.restore();
 }
 
@@ -301,6 +401,12 @@ function compactDistance(value: number, divisor: number) {
   return converted.toFixed(digits);
 }
 
+export function formatAltitude(value: number, units: UnitSystem) {
+  const metric = units === "metric";
+  const converted = value * (metric ? 1 : 3.280_84);
+  return `${Math.round(converted).toLocaleString("en-US")} ${metric ? "m" : "ft"}`;
+}
+
 export function formatStat(key: StatKey, stats: FlightStats, units: UnitSystem) {
   const metric = units === "metric";
   switch (key) {
@@ -315,9 +421,9 @@ export function formatStat(key: StatKey, stats: FlightStats, units: UnitSystem) 
     case "averageSpeed":
       return { label: "Avg speed", value: `${(stats.averageSpeed * (metric ? 3.6 : 2.236_936)).toFixed(1)} ${metric ? "km/h" : "mph"}` };
     case "maxAltitude":
-      return { label: "Max elevation", value: `${Math.round(stats.maxAltitude * (metric ? 1 : 3.280_84)).toLocaleString("en-US")} ${metric ? "m" : "ft"}` };
+      return { label: "Max elevation", value: formatAltitude(stats.maxAltitude, units) };
     case "elevationGain":
-      return { label: "Elevation gain", value: `${Math.round(stats.elevationGain * (metric ? 1 : 3.280_84)).toLocaleString("en-US")} ${metric ? "m" : "ft"}` };
+      return { label: "Elevation gain", value: formatAltitude(stats.elevationGain, units) };
     case "maxVario":
       return { label: "Max climb", value: `${(stats.maxVario * (metric ? 1 : 196.850_4)).toFixed(metric ? 1 : 0)} ${metric ? "m/s" : "ft/min"}` };
     case "minVario":
@@ -326,26 +432,50 @@ export function formatStat(key: StatKey, stats: FlightStats, units: UnitSystem) 
 }
 
 function panelLayout(width: number, height: number, settings: OverlaySettings) {
-  let scale = Math.max(0.45, (width / 1_200) * settings.scale);
+  let scale = Math.max(
+    0.3,
+    Math.min(width / 1_200, height / 675) * settings.scale,
+  );
   const hasVisual = settings.showTrack || settings.showElevation;
 
   const measure = (unit: number) => {
     const margin = 34 * unit;
-    const panelWidth = Math.min(width - margin * 2, Math.max(350 * unit, Math.min(width * 0.52, 600 * unit)));
+    const availableWidth = Math.max(1, width - margin * 2);
+    const requestedWidth = width * settings.overlayWidth;
+    const panelWidth = Math.min(availableWidth, Math.max(340 * unit, requestedWidth));
     const innerWidth = panelWidth - 46 * unit;
-    const titleHeight = settings.title.trim() ? 54 * unit : 20 * unit;
-    const visualHeight = hasVisual ? 144 * unit : 0;
-    const visualGap = hasVisual ? 19 * unit : 0;
+    const titleHeight = settings.title.trim() ? 56 * unit : 0;
+    const trackHeight = settings.showTrack ? 210 * unit * settings.trackScale : 0;
+    const elevationHeight = settings.showElevation ? 132 * unit * settings.elevationScale : 0;
+    const hasBoth = settings.showTrack && settings.showElevation;
+    const graphGap = hasBoth ? 18 * unit : 0;
+    const visualHeight = !hasVisual
+      ? 0
+      : hasBoth && settings.graphLayout === "stacked"
+        ? trackHeight + graphGap + elevationHeight
+        : Math.max(trackHeight, elevationHeight);
+    const visualGap = hasVisual && settings.enabledStats.length ? 22 * unit : 0;
     const rows = Math.ceil(settings.enabledStats.length / 2);
     const statsHeight = rows * 57 * unit;
-    const panelHeight = 23 * unit + titleHeight + visualHeight + visualGap + statsHeight + 20 * unit;
-    return { margin, panelWidth, innerWidth, panelHeight, titleHeight, visualHeight, visualGap };
+    const panelHeight = 46 * unit + titleHeight + visualHeight + visualGap + statsHeight;
+    return {
+      margin,
+      panelWidth,
+      innerWidth,
+      panelHeight,
+      titleHeight,
+      visualHeight,
+      visualGap,
+      graphGap,
+      trackHeight,
+      elevationHeight,
+    };
   };
 
   let layout = measure(scale);
   const maxHeight = height - layout.margin * 2;
   if (layout.panelHeight > maxHeight && maxHeight > 0) {
-    scale *= Math.max(0.55, maxHeight / layout.panelHeight);
+    scale *= Math.max(0.24, (maxHeight / layout.panelHeight) * 0.985);
     layout = measure(scale);
   }
 
@@ -404,33 +534,78 @@ export function drawOverlay(
 
   if (layout.visualHeight) {
     const both = settings.showTrack && settings.showElevation;
-    const gap = 14 * scale;
-    const itemWidth = both ? (innerWidth - gap) / 2 : innerWidth;
-    if (settings.showTrack) {
+    const stacked = both && settings.graphLayout === "stacked";
+    if (stacked) {
       drawTrack(
         context,
         analysis.points,
         contentX,
         cursorY,
-        itemWidth,
-        layout.visualHeight,
-        settings.accentColor,
+        innerWidth,
+        layout.trackHeight,
+        settings.trackColor,
         scale,
+        settings.trackLineWidth,
       );
-    }
-    if (settings.showElevation) {
+      cursorY += layout.trackHeight + layout.graphGap;
       drawElevation(
         context,
         analysis.points,
-        contentX + (both ? itemWidth + gap : 0),
+        contentX,
         cursorY,
-        itemWidth,
-        layout.visualHeight,
-        settings.accentColor,
+        innerWidth,
+        layout.elevationHeight,
+        settings.elevationColor,
+        effectiveText,
         scale,
+        settings.elevationLineWidth,
+        settings.units,
+        {
+          start: settings.showStartAltitude,
+          max: settings.showMaxAltitude,
+          landing: settings.showLandingAltitude,
+        },
       );
+      cursorY += layout.elevationHeight;
+    } else {
+      const gap = both ? 16 * scale : 0;
+      const itemWidth = both ? (innerWidth - gap) / 2 : innerWidth;
+      if (settings.showTrack) {
+        drawTrack(
+          context,
+          analysis.points,
+          contentX,
+          cursorY + (layout.visualHeight - layout.trackHeight) / 2,
+          itemWidth,
+          layout.trackHeight,
+          settings.trackColor,
+          scale,
+          settings.trackLineWidth,
+        );
+      }
+      if (settings.showElevation) {
+        drawElevation(
+          context,
+          analysis.points,
+          contentX + (both ? itemWidth + gap : 0),
+          cursorY + (layout.visualHeight - layout.elevationHeight) / 2,
+          itemWidth,
+          layout.elevationHeight,
+          settings.elevationColor,
+          effectiveText,
+          scale,
+          settings.elevationLineWidth,
+          settings.units,
+          {
+            start: settings.showStartAltitude,
+            max: settings.showMaxAltitude,
+            landing: settings.showLandingAltitude,
+          },
+        );
+      }
+      cursorY += layout.visualHeight;
     }
-    cursorY += layout.visualHeight + layout.visualGap;
+    cursorY += layout.visualGap;
   }
 
   const columnWidth = innerWidth / 2;

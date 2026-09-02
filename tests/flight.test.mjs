@@ -42,3 +42,15 @@ test("rejects a file without a usable track", async () => {
   const { parseIgc } = await vite.ssrLoadModule("/lib/flight.ts");
   assert.throws(() => parseIgc("AXXX\nHFDTE010826"), /two valid IGC B-record fixes/);
 });
+
+test("formats altitude labels and exposes independent graph defaults", async () => {
+  const { DEFAULT_SETTINGS, formatAltitude } = await vite.ssrLoadModule("/lib/render-overlay.ts");
+
+  assert.equal(formatAltitude(1_000, "metric"), "1,000 m");
+  assert.equal(formatAltitude(1_000, "imperial"), "3,281 ft");
+  assert.equal(DEFAULT_SETTINGS.graphLayout, "stacked");
+  assert.notEqual(DEFAULT_SETTINGS.trackColor, DEFAULT_SETTINGS.elevationColor);
+  assert.equal(DEFAULT_SETTINGS.showStartAltitude, true);
+  assert.equal(DEFAULT_SETTINGS.showMaxAltitude, true);
+  assert.equal(DEFAULT_SETTINGS.showLandingAltitude, true);
+});

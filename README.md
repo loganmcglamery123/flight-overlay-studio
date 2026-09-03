@@ -7,18 +7,20 @@ Everything runs in the browser. Uploaded flight logs and media are not sent to a
 ## What it does
 
 - Parses standard IGC `B` records directly in the browser
-- Draws the flight track, elevation profile, statistics, and flight-sport mark as directly editable canvas elements
+- Draws the flight track, elevation profile, grouped statistics, and paraglider mark as directly editable canvas elements
 - Calculates total track length, a three-turnpoint route estimate, a triangle estimate, duration, average speed, maximum elevation, elevation gain, maximum climb, and maximum sink
 - Switches between metric and imperial units
 - Lets the user choose which elements and statistics appear
 - Supports dark glass, light glass, and panel-free styles
 - Lets each element be dragged, resized, or removed directly on the photo with mouse, touch, or keyboard controls
+- Keeps all enabled statistics together in one movable grid with selectable column-by-row layouts
+- Adjusts statistic labels and values with separate font-size controls
 - Keeps the centered overlay panel and every element visible in a single-screen desktop and mobile editor
-- Adjusts panel size, opacity, text color, accent color, and media fit from a compact contextual inspector
+- Adjusts panel size, opacity, text color, accent color, and media fit from a vertically scrolling contextual inspector
 - Gives the track and altitude graph independent colors, line widths, and sizes
 - Adds optional start, maximum, and landing altitude labels in the selected unit system
 - Places a larger track inside the centered panel by default, with North-up, automatic best-fit, slider, and direct rotation controls
-- Includes an optional rotating compass and paraglider, hang-glider, or sailplane mark
+- Uses clean Strava-inspired sticker typography without text outlines and includes one optional paraglider silhouette
 - Downloads full-resolution photos as maximum-quality JPEG files
 - Downloads a full-resolution transparent PNG containing only the overlay for use as a sticker
 - Records videos as MP4 in real time when the browser supports MP4 MediaRecorder output

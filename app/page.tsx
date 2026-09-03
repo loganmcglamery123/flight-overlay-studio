@@ -40,13 +40,11 @@ import {
   createDefaultSettings,
   renderComposite,
   STAT_OPTIONS,
-  statElementId,
   type MediaFit,
   type OverlayElementFrame,
   type OverlayElementId,
   type OverlaySettings,
   type OverlayStyle,
-  type SportIcon,
   type StatKey,
   type TrackOrientation,
   type UnitSystem,
@@ -224,27 +222,23 @@ function bestMp4RecorderType() {
   return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
 }
 
-function statKeyFromElement(id: OverlayElementId | null): StatKey | null {
-  if (!id?.startsWith("stat:")) return null;
-  return id.slice(5) as StatKey;
-}
-
 function elementLabel(id: OverlayElementId | null) {
   if (!id) return "Canvas settings";
   if (id === "track") return "Track outline";
   if (id === "elevation") return "Altitude graph";
-  if (id === "sportIcon") return "Flight-sport mark";
+  if (id === "stats") return "Statistics";
+  if (id === "sportIcon") return "Paraglider icon";
   if (id === "title") return "Flight title";
-  const key = statKeyFromElement(id);
-  return STAT_OPTIONS.find((option) => option.key === key)?.label ?? "Statistic";
+  return "Overlay element";
 }
 
 function frameMinimum(id: OverlayElementId) {
   if (id === "track") return { width: 0.2, height: 0.16 };
   if (id === "elevation") return { width: 0.24, height: 0.09 };
+  if (id === "stats") return { width: 0.24, height: 0.08 };
   if (id === "sportIcon") return { width: 0.045, height: 0.045 };
   if (id === "title") return { width: 0.18, height: 0.05 };
-  return { width: 0.14, height: 0.055 };
+  return { width: 0.12, height: 0.055 };
 }
 
 function constrainFrame(frame: OverlayElementFrame, id: OverlayElementId): OverlayElementFrame {
@@ -258,18 +252,6 @@ function constrainFrame(frame: OverlayElementFrame, id: OverlayElementId): Overl
     height,
   };
 }
-
-const STAT_SLOTS: OverlayElementFrame[] = [
-  { x: 0.04, y: 0.72, width: 0.4, height: 0.085 },
-  { x: 0.56, y: 0.72, width: 0.4, height: 0.085 },
-  { x: 0.04, y: 0.82, width: 0.4, height: 0.085 },
-  { x: 0.56, y: 0.82, width: 0.4, height: 0.085 },
-  { x: 0.04, y: 0.62, width: 0.4, height: 0.085 },
-  { x: 0.56, y: 0.62, width: 0.4, height: 0.085 },
-  { x: 0.04, y: 0.52, width: 0.4, height: 0.085 },
-  { x: 0.56, y: 0.52, width: 0.4, height: 0.085 },
-  { x: 0.3, y: 0.82, width: 0.4, height: 0.085 },
-];
 
 type ActiveInteraction = {
   id: OverlayElementId;
@@ -540,20 +522,48 @@ export default function Home() {
 
   const toggleStat = (key: StatKey, checked: boolean) => {
     setSettings((current) => {
-      if (!checked) {
-        return { ...current, enabledStats: current.enabledStats.filter((item) => item !== key) };
-      }
-      if (current.enabledStats.includes(key)) return current;
-      const usedFrames = current.enabledStats.map((item) => current.elementFrames[statElementId(item)]);
-      const slot = STAT_SLOTS.find((candidate) => !usedFrames.some((frame) => (
-        Math.abs(frame.x - candidate.x) < 0.04 && Math.abs(frame.y - candidate.y) < 0.04
-      ))) ?? STAT_SLOTS.at(-1)!;
+      const enabledStats = checked
+        ? current.enabledStats.includes(key)
+          ? current.enabledStats
+          : [...current.enabledStats, key]
+        : current.enabledStats.filter((item) => item !== key);
+      const columns = Math.max(1, Math.min(4, Math.round(current.statColumns)));
+      const rows = Math.max(1, Math.ceil(enabledStats.length / columns));
+      const currentFrame = current.elementFrames.stats;
+      const recommendedHeight = Math.min(0.54, Math.max(0.1, rows * 0.085));
+      const height = checked ? Math.max(currentFrame.height, recommendedHeight) : currentFrame.height;
       return {
         ...current,
-        enabledStats: [...current.enabledStats, key],
+        enabledStats,
         elementFrames: {
           ...current.elementFrames,
-          [statElementId(key)]: { ...slot },
+          stats: {
+            ...currentFrame,
+            y: Math.min(currentFrame.y, 1 - height),
+            height,
+          },
+        },
+      };
+    });
+  };
+
+  const updateStatColumns = (columns: number) => {
+    setSettings((current) => {
+      const statColumns = Math.max(1, Math.min(4, Math.round(columns)));
+      const rows = Math.max(1, Math.ceil(current.enabledStats.length / statColumns));
+      const frame = current.elementFrames.stats;
+      const recommendedHeight = Math.min(0.54, Math.max(0.1, rows * 0.085));
+      const height = Math.max(frame.height, recommendedHeight);
+      return {
+        ...current,
+        statColumns,
+        elementFrames: {
+          ...current.elementFrames,
+          stats: {
+            ...frame,
+            y: Math.min(frame.y, 1 - height),
+            height,
+          },
         },
       };
     });
@@ -564,10 +574,7 @@ export default function Home() {
     else if (id === "elevation") updateSettings("showElevation", false);
     else if (id === "sportIcon") updateSettings("sportIcon", "none");
     else if (id === "title") updateSettings("title", "");
-    else {
-      const key = statKeyFromElement(id);
-      if (key) toggleStat(key, false);
-    }
+    else if (id === "stats") updateSettings("enabledStats", []);
     setSelectedElement(null);
   };
 
@@ -583,7 +590,7 @@ export default function Home() {
     if (settings.title.trim()) items.push("title");
     if (settings.showTrack) items.push("track");
     if (settings.showElevation) items.push("elevation");
-    settings.enabledStats.forEach((key) => items.push(statElementId(key)));
+    if (settings.enabledStats.length) items.push("stats");
     if (settings.sportIcon !== "none") items.push("sportIcon");
     return items;
   }, [settings.enabledStats, settings.showElevation, settings.showTrack, settings.sportIcon, settings.title]);
@@ -783,7 +790,6 @@ export default function Home() {
   };
 
   const selectedFrame = selectedElement ? settings.elementFrames[selectedElement] : null;
-  const selectedStat = statKeyFromElement(selectedElement);
   const readyToExport = Boolean(analysis && mediaReady && media);
   const panelLeft = (1 - settings.panelWidth) / 2;
   const panelTop = (1 - settings.panelHeight) / 2;
@@ -913,7 +919,7 @@ export default function Home() {
               <div className="elements-tray__heading">
                 <div>
                   <strong>Overlay elements</strong>
-                  <span>Tap an item on the image to edit it.</span>
+                  <span>Statistics move and resize as one group.</span>
                 </div>
                 <Button variant="ghost" size="icon" onClick={() => setElementsOpen(false)} aria-label="Close elements"><X /></Button>
               </div>
@@ -921,7 +927,7 @@ export default function Home() {
                 {[
                   ["track", "Track outline", settings.showTrack],
                   ["elevation", "Altitude graph", settings.showElevation],
-                  ["sportIcon", "Flight-sport mark", settings.sportIcon !== "none"],
+                  ["sportIcon", "Paraglider icon", settings.sportIcon !== "none"],
                   ["title", "Flight title", Boolean(settings.title.trim())],
                 ].map(([id, label, checked]) => (
                   <label className="element-toggle" key={id as string}>
@@ -1088,7 +1094,7 @@ export default function Home() {
           </div>
 
           <div className="inspector-scroll">
-            {selectedFrame && (
+            {selectedFrame && selectedElement !== "stats" && (
               <>
                 <RangeField
                   id="element-width"
@@ -1189,19 +1195,7 @@ export default function Home() {
 
             {selectedElement === "sportIcon" && (
               <>
-                <div className="compact-field">
-                  <Label htmlFor="sport-icon">Mark</Label>
-                  <Select value={settings.sportIcon} onValueChange={(value) => updateSettings("sportIcon", value as SportIcon)}>
-                    <SelectTrigger id="sport-icon"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="paraglider">Paraglider</SelectItem>
-                      <SelectItem value="hang-glider">Hang glider</SelectItem>
-                      <SelectItem value="sailplane">Sailplane</SelectItem>
-                      <SelectItem value="none">None</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <ColorField id="accent-color-icon" label="Mark color" value={settings.accentColor} onChange={(value) => updateSettings("accentColor", value)} />
+                <ColorField id="accent-color-icon" label="Icon color" value={settings.accentColor} onChange={(value) => updateSettings("accentColor", value)} />
               </>
             )}
 
@@ -1211,12 +1205,55 @@ export default function Home() {
                   <Label htmlFor="flight-title">Title</Label>
                   <Input id="flight-title" value={settings.title} maxLength={54} onChange={(event) => updateSettings("title", event.target.value)} />
                 </div>
+                <RangeField
+                  id="title-font-size"
+                  label="Title font size"
+                  min={12}
+                  max={72}
+                  step={1}
+                  value={settings.titleFontSize}
+                  display={`${Math.round(settings.titleFontSize)} px`}
+                  onChange={(value) => updateSettings("titleFontSize", value)}
+                />
                 <ColorField id="title-color" label="Text color" value={settings.textColor} onChange={(value) => updateSettings("textColor", value)} />
               </>
             )}
 
-            {selectedStat && (
+            {selectedElement === "stats" && (
               <>
+                <div className="compact-field">
+                  <Label htmlFor="stat-grid-layout">Grid layout</Label>
+                  <Select value={String(settings.statColumns)} onValueChange={(value) => updateStatColumns(Number(value))}>
+                    <SelectTrigger id="stat-grid-layout"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[1, 2, 3, 4].map((columns) => (
+                        <SelectItem key={columns} value={String(columns)}>
+                          {columns} × {Math.max(1, Math.ceil(settings.enabledStats.length / columns))}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <RangeField
+                  id="stat-label-font-size"
+                  label="Label font size"
+                  min={8}
+                  max={32}
+                  step={1}
+                  value={settings.statLabelFontSize}
+                  display={`${Math.round(settings.statLabelFontSize)} px`}
+                  onChange={(value) => updateSettings("statLabelFontSize", value)}
+                />
+                <RangeField
+                  id="stat-value-font-size"
+                  label="Value font size"
+                  min={12}
+                  max={64}
+                  step={1}
+                  value={settings.statValueFontSize}
+                  display={`${Math.round(settings.statValueFontSize)} px`}
+                  onChange={(value) => updateSettings("statValueFontSize", value)}
+                />
                 <div className="compact-field">
                   <Label htmlFor="stat-units">Units</Label>
                   <Select value={settings.units} onValueChange={(value) => updateSettings("units", value as UnitSystem)}>

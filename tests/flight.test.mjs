@@ -62,12 +62,15 @@ test("formats altitude labels and exposes direct-edit overlay defaults", async (
   assert.ok(DEFAULT_SETTINGS.panelHeight > 0.85);
   assert.ok(DEFAULT_SETTINGS.elementFrames.track.width > 0.8);
   assert.ok(DEFAULT_SETTINGS.elementFrames.track.height > 0.4);
+  assert.ok(DEFAULT_SETTINGS.elementFrames.stats.width > 0.8);
+  assert.equal(DEFAULT_SETTINGS.statColumns, 2);
+  assert.ok(DEFAULT_SETTINGS.statValueFontSize > DEFAULT_SETTINGS.statLabelFontSize);
   assert.equal(
     DEFAULT_SETTINGS.elementFrames.sportIcon.x + DEFAULT_SETTINGS.elementFrames.sportIcon.width / 2,
     0.5,
   );
   assert.ok(DEFAULT_SETTINGS.elementFrames.sportIcon.y > 0.9);
-  assert.equal(DEFAULT_SETTINGS.showCompass, true);
+  assert.equal(DEFAULT_SETTINGS.showCompass, false);
   assert.equal(DEFAULT_SETTINGS.sportIcon, "paraglider");
   assert.deepEqual(DEFAULT_SETTINGS.enabledStats, [
     "openDistance",

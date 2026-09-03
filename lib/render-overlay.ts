@@ -4,7 +4,7 @@ export type UnitSystem = "metric" | "imperial";
 export type OverlayStyle = "glass" | "light" | "minimal";
 export type MediaFit = "cover" | "contain";
 export type TrackOrientation = "north-up" | "best-fit" | "custom";
-export type SportIcon = "none" | "paraglider" | "hang-glider" | "sailplane";
+export type SportIcon = "none" | "paraglider";
 export type StatKey =
   | "totalDistance"
   | "openDistance"
@@ -20,8 +20,8 @@ export type OverlayElementId =
   | "title"
   | "track"
   | "elevation"
-  | "sportIcon"
-  | `stat:${StatKey}`;
+  | "stats"
+  | "sportIcon";
 
 export type OverlayElementFrame = {
   x: number;
@@ -49,6 +49,10 @@ export type OverlaySettings = {
   trackRotation: number;
   showCompass: boolean;
   sportIcon: SportIcon;
+  titleFontSize: number;
+  statLabelFontSize: number;
+  statValueFontSize: number;
+  statColumns: number;
   trackLineWidth: number;
   elevationLineWidth: number;
   showStartAltitude: boolean;
@@ -71,24 +75,12 @@ export const STAT_OPTIONS: Array<{ key: StatKey; label: string }> = [
   { key: "minVario", label: "Max sink" },
 ];
 
-export function statElementId(key: StatKey): `stat:${StatKey}` {
-  return `stat:${key}`;
-}
-
 export const DEFAULT_ELEMENT_FRAMES: OverlayElementFrames = {
   title: { x: 0.17, y: 0.01, width: 0.66, height: 0.07 },
   track: { x: 0.08, y: 0.105, width: 0.84, height: 0.415 },
   elevation: { x: 0.025, y: 0.53, width: 0.95, height: 0.18 },
   sportIcon: { x: 0.455, y: 0.925, width: 0.09, height: 0.065 },
-  "stat:totalDistance": { x: 0.04, y: 0.72, width: 0.4, height: 0.085 },
-  "stat:openDistance": { x: 0.04, y: 0.72, width: 0.4, height: 0.085 },
-  "stat:triangleDistance": { x: 0.56, y: 0.72, width: 0.4, height: 0.085 },
-  "stat:duration": { x: 0.56, y: 0.72, width: 0.4, height: 0.085 },
-  "stat:averageSpeed": { x: 0.56, y: 0.82, width: 0.4, height: 0.085 },
-  "stat:maxAltitude": { x: 0.04, y: 0.82, width: 0.4, height: 0.085 },
-  "stat:elevationGain": { x: 0.04, y: 0.82, width: 0.4, height: 0.085 },
-  "stat:maxVario": { x: 0.56, y: 0.82, width: 0.4, height: 0.085 },
-  "stat:minVario": { x: 0.3, y: 0.82, width: 0.4, height: 0.085 },
+  stats: { x: 0.08, y: 0.725, width: 0.84, height: 0.18 },
 };
 
 export function createDefaultElementFrames(): OverlayElementFrames {
@@ -99,35 +91,39 @@ export function createDefaultElementFrames(): OverlayElementFrames {
 
 export function createDefaultSettings(): OverlaySettings {
   return {
-  title: "",
-  units: "metric",
-  style: "minimal",
-  fit: "cover",
-  accentColor: "#d9ff43",
-  textColor: "#ffffff",
-  trackColor: "#ff6b2c",
-  elevationColor: "#ffffff",
-  panelOpacity: 0.72,
-  panelWidth: 0.92,
-  panelHeight: 0.9,
-  elementFrames: createDefaultElementFrames(),
-  trackOrientation: "north-up",
-  trackRotation: 0,
-  showCompass: true,
-  sportIcon: "paraglider",
-  trackLineWidth: 3,
-  elevationLineWidth: 2.5,
-  showStartAltitude: true,
-  showMaxAltitude: true,
-  showLandingAltitude: true,
-  showTrack: true,
-  showElevation: true,
-  enabledStats: [
-    "openDistance",
-    "duration",
-    "maxAltitude",
-    "averageSpeed",
-  ],
+    title: "",
+    units: "metric",
+    style: "minimal",
+    fit: "cover",
+    accentColor: "#ffffff",
+    textColor: "#ffffff",
+    trackColor: "#fc4c02",
+    elevationColor: "#ffffff",
+    panelOpacity: 0.72,
+    panelWidth: 0.92,
+    panelHeight: 0.9,
+    elementFrames: createDefaultElementFrames(),
+    trackOrientation: "north-up",
+    trackRotation: 0,
+    showCompass: false,
+    sportIcon: "paraglider",
+    titleFontSize: 32,
+    statLabelFontSize: 13,
+    statValueFontSize: 27,
+    statColumns: 2,
+    trackLineWidth: 3,
+    elevationLineWidth: 2.5,
+    showStartAltitude: true,
+    showMaxAltitude: true,
+    showLandingAltitude: true,
+    showTrack: true,
+    showElevation: true,
+    enabledStats: [
+      "openDistance",
+      "duration",
+      "maxAltitude",
+      "averageSpeed",
+    ],
   };
 }
 
@@ -382,9 +378,6 @@ function drawCompass(
   context.font = `800 ${Math.max(8, 10.5 * lineScale)}px ui-sans-serif, system-ui, sans-serif`;
   const labelX = centerX + northX * size * 0.98;
   const labelY = centerY + northY * size * 0.98;
-  context.strokeStyle = "rgba(0,0,0,0.82)";
-  context.lineWidth = Math.max(2, 3 * lineScale);
-  context.strokeText("N", labelX, labelY);
   context.fillStyle = "#ffffff";
   context.fillText("N", labelX, labelY);
   context.restore();
@@ -399,73 +392,49 @@ function drawSportIcon(
   color: string,
 ) {
   if (icon === "none") return;
-  const unit = size / 32;
+  const unit = size / 100;
   context.save();
   context.translate(x, y);
-  context.beginPath();
-  context.arc(size / 2, size / 2, size * 0.48, 0, Math.PI * 2);
-  context.fillStyle = "rgba(5,8,10,0.48)";
-  context.fill();
-  context.strokeStyle = "rgba(255,255,255,0.32)";
-  context.lineWidth = Math.max(1, unit);
-  context.stroke();
-
   context.strokeStyle = color;
   context.fillStyle = color;
-  context.lineWidth = Math.max(1.4, 1.8 * unit);
+  context.lineWidth = Math.max(1.2, 3.8 * unit);
   context.lineCap = "round";
   context.lineJoin = "round";
 
-  if (icon === "paraglider") {
-    context.beginPath();
-    context.moveTo(5 * unit, 13 * unit);
-    context.quadraticCurveTo(16 * unit, 3.5 * unit, 27 * unit, 13 * unit);
-    context.quadraticCurveTo(16 * unit, 9 * unit, 5 * unit, 13 * unit);
-    context.stroke();
-    context.beginPath();
-    context.moveTo(5 * unit, 13 * unit);
-    context.lineTo(14 * unit, 23 * unit);
-    context.moveTo(27 * unit, 13 * unit);
-    context.lineTo(18 * unit, 23 * unit);
-    context.moveTo(16 * unit, 10 * unit);
-    context.lineTo(16 * unit, 23 * unit);
-    context.stroke();
-    context.beginPath();
-    context.arc(16 * unit, 25 * unit, 1.8 * unit, 0, Math.PI * 2);
-    context.fill();
-  } else if (icon === "hang-glider") {
-    context.beginPath();
-    context.moveTo(3.5 * unit, 11.5 * unit);
-    context.lineTo(16 * unit, 6 * unit);
-    context.lineTo(28.5 * unit, 11.5 * unit);
-    context.lineTo(16 * unit, 17.5 * unit);
-    context.closePath();
-    context.stroke();
-    context.beginPath();
-    context.moveTo(3.5 * unit, 11.5 * unit);
-    context.lineTo(28.5 * unit, 11.5 * unit);
-    context.moveTo(16 * unit, 6 * unit);
-    context.lineTo(16 * unit, 22 * unit);
-    context.stroke();
-    context.beginPath();
-    context.arc(16 * unit, 24.5 * unit, 1.8 * unit, 0, Math.PI * 2);
-    context.fill();
-  } else {
-    context.beginPath();
-    context.moveTo(16 * unit, 4 * unit);
-    context.lineTo(16 * unit, 27.5 * unit);
-    context.moveTo(3.5 * unit, 14 * unit);
-    context.lineTo(28.5 * unit, 14 * unit);
-    context.moveTo(10.5 * unit, 23.5 * unit);
-    context.lineTo(21.5 * unit, 23.5 * unit);
-    context.stroke();
-    context.beginPath();
-    context.moveTo(16 * unit, 3.5 * unit);
-    context.lineTo(13.5 * unit, 8 * unit);
-    context.lineTo(18.5 * unit, 8 * unit);
-    context.closePath();
-    context.fill();
-  }
+  // Broad ram-air canopy silhouette, intentionally closer to a real paraglider
+  // than a generic parachute pictogram.
+  context.beginPath();
+  context.moveTo(4 * unit, 38 * unit);
+  context.bezierCurveTo(8 * unit, 8 * unit, 72 * unit, -2 * unit, 94 * unit, 29 * unit);
+  context.bezierCurveTo(103 * unit, 42 * unit, 91 * unit, 55 * unit, 79 * unit, 47 * unit);
+  context.bezierCurveTo(61 * unit, 34 * unit, 37 * unit, 33 * unit, 19 * unit, 48 * unit);
+  context.bezierCurveTo(9 * unit, 57 * unit, 1 * unit, 50 * unit, 4 * unit, 38 * unit);
+  context.closePath();
+  context.fill();
+
+  context.beginPath();
+  context.moveTo(19 * unit, 47 * unit);
+  context.lineTo(42 * unit, 79 * unit);
+  context.moveTo(35 * unit, 37 * unit);
+  context.lineTo(46 * unit, 78 * unit);
+  context.moveTo(65 * unit, 38 * unit);
+  context.lineTo(55 * unit, 78 * unit);
+  context.moveTo(79 * unit, 47 * unit);
+  context.lineTo(59 * unit, 80 * unit);
+  context.stroke();
+
+  context.beginPath();
+  context.arc(49 * unit, 75 * unit, 5.2 * unit, 0, Math.PI * 2);
+  context.fill();
+  context.beginPath();
+  context.moveTo(43 * unit, 76 * unit);
+  context.bezierCurveTo(38 * unit, 76 * unit, 35 * unit, 80 * unit, 39 * unit, 84 * unit);
+  context.bezierCurveTo(47 * unit, 93 * unit, 65 * unit, 97 * unit, 77 * unit, 96 * unit);
+  context.bezierCurveTo(84 * unit, 95 * unit, 84 * unit, 87 * unit, 76 * unit, 84 * unit);
+  context.lineTo(57 * unit, 77 * unit);
+  context.bezierCurveTo(53 * unit, 75 * unit, 48 * unit, 77 * unit, 43 * unit, 76 * unit);
+  context.closePath();
+  context.fill();
   context.restore();
 }
 
@@ -529,10 +498,7 @@ function drawTrack(
   context.lineWidth = Math.max(1, lineWidth * lineScale);
   context.lineJoin = "round";
   context.lineCap = "round";
-  context.shadowColor = rgba(color, 0.42);
-  context.shadowBlur = 8 * lineScale;
   context.stroke();
-  context.shadowBlur = 0;
 
   const first = screenPosition(rotated[0]);
   const last = screenPosition(rotated.at(-1)!);
@@ -627,10 +593,6 @@ function drawElevation(
     context.textAlign = align;
     context.textBaseline = "alphabetic";
     context.font = `700 ${labelFontSize}px ui-sans-serif, system-ui, sans-serif`;
-    context.lineJoin = "round";
-    context.strokeStyle = "rgba(0,0,0,0.78)";
-    context.lineWidth = Math.max(2, 3.2 * lineScale);
-    context.strokeText(label, labelX, labelY, width * 0.42);
     context.fillStyle = labelColor;
     context.fillText(label, labelX, labelY, width * 0.42);
   };
@@ -640,9 +602,6 @@ function drawElevation(
     context.arc(position.x, position.y, Math.max(2.5, 3.2 * lineScale), 0, Math.PI * 2);
     context.fillStyle = markerColor;
     context.fill();
-    context.strokeStyle = "rgba(0,0,0,0.65)";
-    context.lineWidth = Math.max(1, 1.4 * lineScale);
-    context.stroke();
     return position;
   };
 
@@ -753,71 +712,68 @@ function drawTitleElement(
   title: string,
   frame: { x: number; y: number; width: number; height: number },
   color: string,
-  accentColor: string,
-  minimal: boolean,
+  fontSize: number,
+  lineScale: number,
 ) {
   if (!title.trim()) return;
-  const scale = Math.max(0.35, Math.min(frame.width / 520, frame.height / 72));
-  const fontSize = Math.max(10, 30 * scale);
+  const scaledFontSize = Math.max(8, fontSize * lineScale);
   context.save();
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.font = `750 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
-  if (minimal) {
-    context.strokeStyle = "rgba(0,0,0,0.8)";
-    context.lineWidth = Math.max(2, 4 * scale);
-    context.lineJoin = "round";
-    context.strokeText(title.trim().slice(0, 54), frame.x + frame.width / 2, frame.y + frame.height * 0.43, frame.width);
-  }
+  context.font = `800 ${scaledFontSize}px ui-sans-serif, system-ui, sans-serif`;
   context.fillStyle = color;
-  context.fillText(title.trim().slice(0, 54), frame.x + frame.width / 2, frame.y + frame.height * 0.43, frame.width);
-  context.fillStyle = accentColor;
-  context.fillRect(
-    frame.x + frame.width * 0.42,
-    frame.y + frame.height * 0.78,
-    frame.width * 0.16,
-    Math.max(2, 3 * scale),
-  );
+  context.fillText(title.trim().slice(0, 54), frame.x + frame.width / 2, frame.y + frame.height / 2, frame.width);
   context.restore();
 }
 
-function drawStatElement(
+function drawStatsGroup(
   context: CanvasRenderingContext2D,
-  key: StatKey,
+  keys: StatKey[],
   stats: FlightStats,
   units: UnitSystem,
   frame: { x: number; y: number; width: number; height: number },
   color: string,
   lightPanel: boolean,
-  minimal: boolean,
+  lineScale: number,
+  requestedColumns: number,
+  labelFontSize: number,
+  valueFontSize: number,
 ) {
-  const stat = formatStat(key, stats, units);
-  const scale = Math.max(0.32, Math.min(frame.width / 245, frame.height / 82));
-  const labelSize = Math.max(7, 12 * scale);
-  const valueSize = Math.max(11, 24 * scale);
-  const textX = frame.x;
-  const labelY = frame.y + Math.max(labelSize, frame.height * 0.28);
-  const valueY = frame.y + Math.max(labelSize + valueSize, frame.height * 0.72);
+  if (!keys.length) return;
+  const columns = Math.max(1, Math.min(4, Math.round(requestedColumns)));
+  const rows = Math.ceil(keys.length / columns);
+  const columnGap = 14 * lineScale;
+  const rowGap = 9 * lineScale;
+  const cellWidth = Math.max(1, (frame.width - columnGap * (columns - 1)) / columns);
+  const cellHeight = Math.max(1, (frame.height - rowGap * (rows - 1)) / rows);
+  const labelSize = Math.max(7, labelFontSize * lineScale);
+  const valueSize = Math.max(10, valueFontSize * lineScale);
+  const textGap = Math.max(2, 3 * lineScale);
+
   context.save();
-  context.textAlign = "left";
-  context.textBaseline = "alphabetic";
-  context.lineJoin = "round";
-  context.font = `650 ${labelSize}px ui-sans-serif, system-ui, sans-serif`;
-  if (minimal) {
-    context.strokeStyle = "rgba(0,0,0,0.82)";
-    context.lineWidth = Math.max(2, 3 * scale);
-    context.strokeText(stat.label.toUpperCase(), textX, labelY, frame.width);
-  }
-  context.fillStyle = lightPanel ? "rgba(16,22,26,0.58)" : rgba(color, 0.68);
-  context.fillText(stat.label.toUpperCase(), textX, labelY, frame.width);
-  context.font = `760 ${valueSize}px ui-sans-serif, system-ui, sans-serif`;
-  if (minimal) {
-    context.strokeStyle = "rgba(0,0,0,0.82)";
-    context.lineWidth = Math.max(2.2, 4 * scale);
-    context.strokeText(stat.value, textX, valueY, frame.width);
-  }
-  context.fillStyle = color;
-  context.fillText(stat.value, textX, valueY, frame.width);
+  context.beginPath();
+  context.rect(frame.x, frame.y, frame.width, frame.height);
+  context.clip();
+  context.textAlign = "center";
+  context.textBaseline = "top";
+
+  keys.forEach((key, index) => {
+    const stat = formatStat(key, stats, units);
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const cellX = frame.x + column * (cellWidth + columnGap);
+    const cellY = frame.y + row * (cellHeight + rowGap);
+    const contentHeight = labelSize + textGap + valueSize;
+    const contentY = cellY + Math.max(0, (cellHeight - contentHeight) / 2);
+    const centerX = cellX + cellWidth / 2;
+
+    context.font = `650 ${labelSize}px ui-sans-serif, system-ui, sans-serif`;
+    context.fillStyle = lightPanel ? "rgba(16,22,26,0.62)" : rgba(color, 0.72);
+    context.fillText(stat.label.toUpperCase(), centerX, contentY, cellWidth);
+    context.font = `800 ${valueSize}px ui-sans-serif, system-ui, sans-serif`;
+    context.fillStyle = color;
+    context.fillText(stat.value, centerX, contentY + labelSize + textGap, cellWidth);
+  });
   context.restore();
 }
 
@@ -854,9 +810,6 @@ export function drawOverlay(
     context.strokeStyle = isLight ? "rgba(12,20,24,0.12)" : "rgba(255,255,255,0.13)";
     context.lineWidth = Math.max(1, scale);
     context.stroke();
-  } else {
-    context.shadowColor = "rgba(0,0,0,0.85)";
-    context.shadowBlur = 10 * scale;
   }
 
   roundedRect(context, panelX, panelY, panelWidth, panelHeight, isMinimal ? 0 : 22 * scale);
@@ -867,8 +820,8 @@ export function drawOverlay(
     settings.title,
     resolveFrame(panelX, panelY, panelWidth, panelHeight, settings.elementFrames.title),
     effectiveText,
-    settings.accentColor,
-    isMinimal,
+    settings.titleFontSize,
+    scale,
   );
 
   if (settings.showTrack) {
@@ -911,18 +864,19 @@ export function drawOverlay(
     );
   }
 
-  settings.enabledStats.forEach((key) => {
-    drawStatElement(
-      context,
-      key,
-      analysis.stats,
-      settings.units,
-      resolveFrame(panelX, panelY, panelWidth, panelHeight, settings.elementFrames[statElementId(key)]),
-      effectiveText,
-      isLight,
-      isMinimal,
-    );
-  });
+  drawStatsGroup(
+    context,
+    settings.enabledStats,
+    analysis.stats,
+    settings.units,
+    resolveFrame(panelX, panelY, panelWidth, panelHeight, settings.elementFrames.stats),
+    effectiveText,
+    isLight,
+    scale,
+    settings.statColumns,
+    settings.statLabelFontSize,
+    settings.statValueFontSize,
+  );
 
   if (settings.sportIcon !== "none") {
     const frame = resolveFrame(panelX, panelY, panelWidth, panelHeight, settings.elementFrames.sportIcon);

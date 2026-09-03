@@ -1,27 +1,27 @@
-import type { FlightAnalysis, FlightPoint, FlightStats } from "./flight";
+import { flightSnapshotAtProgress, type FlightAnalysis, type FlightPoint, type FlightStats } from "./flight";
 
 export type UnitSystem = "metric" | "imperial";
 export type OverlayStyle = "glass" | "light" | "minimal";
 export type MediaFit = "cover" | "contain";
 export type TrackOrientation = "north-up" | "best-fit" | "custom";
-export type SportIcon = "none" | "paraglider";
 export type StatKey =
   | "totalDistance"
+  | "distanceFromTakeoff"
   | "openDistance"
   | "triangleDistance"
   | "duration"
   | "averageSpeed"
+  | "currentSpeed"
   | "maxAltitude"
   | "elevationGain"
   | "maxVario"
-  | "minVario";
+  | "minVario"
+  | "currentVario";
 
 export type OverlayElementId =
-  | "title"
   | "track"
   | "elevation"
-  | "stats"
-  | "sportIcon";
+  | "stats";
 
 export type OverlayElementFrame = {
   x: number;
@@ -33,11 +33,9 @@ export type OverlayElementFrame = {
 export type OverlayElementFrames = Record<OverlayElementId, OverlayElementFrame>;
 
 export type OverlaySettings = {
-  title: string;
   units: UnitSystem;
   style: OverlayStyle;
   fit: MediaFit;
-  accentColor: string;
   textColor: string;
   trackColor: string;
   elevationColor: string;
@@ -48,39 +46,41 @@ export type OverlaySettings = {
   trackOrientation: TrackOrientation;
   trackRotation: number;
   showCompass: boolean;
-  sportIcon: SportIcon;
-  titleFontSize: number;
   statLabelFontSize: number;
   statValueFontSize: number;
   statColumns: number;
   trackLineWidth: number;
   elevationLineWidth: number;
+  elevationLabelFontSize: number;
   showStartAltitude: boolean;
   showMaxAltitude: boolean;
   showLandingAltitude: boolean;
   showTrack: boolean;
   showElevation: boolean;
+  animateTrack: boolean;
+  photoAnimationSpeed: number;
   enabledStats: StatKey[];
 };
 
 export const STAT_OPTIONS: Array<{ key: StatKey; label: string }> = [
   { key: "totalDistance", label: "Total track length" },
+  { key: "distanceFromTakeoff", label: "Distance from takeoff" },
   { key: "openDistance", label: "3-turnpoint distance" },
   { key: "triangleDistance", label: "Triangle distance" },
   { key: "duration", label: "Duration" },
   { key: "averageSpeed", label: "Average speed" },
+  { key: "currentSpeed", label: "Current speed" },
   { key: "maxAltitude", label: "Max elevation" },
   { key: "elevationGain", label: "Elevation gain" },
   { key: "maxVario", label: "Max climb" },
   { key: "minVario", label: "Max sink" },
+  { key: "currentVario", label: "Current vario" },
 ];
 
 export const DEFAULT_ELEMENT_FRAMES: OverlayElementFrames = {
-  title: { x: 0.17, y: 0.01, width: 0.66, height: 0.07 },
   track: { x: 0.08, y: 0.105, width: 0.84, height: 0.415 },
   elevation: { x: 0.025, y: 0.53, width: 0.95, height: 0.18 },
-  sportIcon: { x: 0.455, y: 0.925, width: 0.09, height: 0.065 },
-  stats: { x: 0.08, y: 0.725, width: 0.84, height: 0.18 },
+  stats: { x: 0.08, y: 0.735, width: 0.84, height: 0.22 },
 };
 
 export function createDefaultElementFrames(): OverlayElementFrames {
@@ -91,11 +91,9 @@ export function createDefaultElementFrames(): OverlayElementFrames {
 
 export function createDefaultSettings(): OverlaySettings {
   return {
-    title: "",
     units: "metric",
     style: "minimal",
     fit: "cover",
-    accentColor: "#ffffff",
     textColor: "#ffffff",
     trackColor: "#fc4c02",
     elevationColor: "#ffffff",
@@ -106,18 +104,19 @@ export function createDefaultSettings(): OverlaySettings {
     trackOrientation: "north-up",
     trackRotation: 0,
     showCompass: false,
-    sportIcon: "paraglider",
-    titleFontSize: 32,
     statLabelFontSize: 13,
     statValueFontSize: 27,
     statColumns: 2,
     trackLineWidth: 3,
     elevationLineWidth: 2.5,
+    elevationLabelFontSize: 12,
     showStartAltitude: true,
     showMaxAltitude: true,
     showLandingAltitude: true,
     showTrack: true,
     showElevation: true,
+    animateTrack: false,
+    photoAnimationSpeed: 480,
     enabledStats: [
       "openDistance",
       "duration",
@@ -200,7 +199,12 @@ export function drawMedia(
   context.restore();
 }
 
-function drawEmptyMedia(context: CanvasRenderingContext2D, width: number, height: number) {
+function drawEmptyMedia(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  showHint: boolean,
+) {
   const gradient = context.createLinearGradient(0, 0, width, height);
   gradient.addColorStop(0, "#111b22");
   gradient.addColorStop(0.55, "#0a1015");
@@ -226,14 +230,16 @@ function drawEmptyMedia(context: CanvasRenderingContext2D, width: number, height
   }
   context.restore();
 
-  const unit = width / 1_200;
-  context.fillStyle = "rgba(255,255,255,0.9)";
-  context.textAlign = "center";
-  context.font = `600 ${Math.max(18, 28 * unit)}px ui-sans-serif, system-ui, sans-serif`;
-  context.fillText("Add a photo or video to begin", width / 2, height / 2 - 4 * unit);
-  context.fillStyle = "rgba(255,255,255,0.5)";
-  context.font = `500 ${Math.max(13, 15 * unit)}px ui-sans-serif, system-ui, sans-serif`;
-  context.fillText("Your files stay in this browser", width / 2, height / 2 + 28 * unit);
+  if (showHint) {
+    const unit = width / 1_200;
+    context.fillStyle = "rgba(255,255,255,0.9)";
+    context.textAlign = "center";
+    context.font = `600 ${Math.max(18, 28 * unit)}px ui-sans-serif, system-ui, sans-serif`;
+    context.fillText("Add a photo or video to begin", width / 2, height / 2 - 4 * unit);
+    context.fillStyle = "rgba(255,255,255,0.5)";
+    context.font = `500 ${Math.max(13, 15 * unit)}px ui-sans-serif, system-ui, sans-serif`;
+    context.fillText("Your files stay in this browser", width / 2, height / 2 + 28 * unit);
+  }
 }
 
 function toRadians(value: number) {
@@ -383,64 +389,10 @@ function drawCompass(
   context.restore();
 }
 
-function drawSportIcon(
-  context: CanvasRenderingContext2D,
-  icon: SportIcon,
-  x: number,
-  y: number,
-  size: number,
-  color: string,
-) {
-  if (icon === "none") return;
-  const unit = size / 100;
-  context.save();
-  context.translate(x, y);
-  context.strokeStyle = color;
-  context.fillStyle = color;
-  context.lineWidth = Math.max(1.2, 3.8 * unit);
-  context.lineCap = "round";
-  context.lineJoin = "round";
-
-  // Broad ram-air canopy silhouette, intentionally closer to a real paraglider
-  // than a generic parachute pictogram.
-  context.beginPath();
-  context.moveTo(4 * unit, 38 * unit);
-  context.bezierCurveTo(8 * unit, 8 * unit, 72 * unit, -2 * unit, 94 * unit, 29 * unit);
-  context.bezierCurveTo(103 * unit, 42 * unit, 91 * unit, 55 * unit, 79 * unit, 47 * unit);
-  context.bezierCurveTo(61 * unit, 34 * unit, 37 * unit, 33 * unit, 19 * unit, 48 * unit);
-  context.bezierCurveTo(9 * unit, 57 * unit, 1 * unit, 50 * unit, 4 * unit, 38 * unit);
-  context.closePath();
-  context.fill();
-
-  context.beginPath();
-  context.moveTo(19 * unit, 47 * unit);
-  context.lineTo(42 * unit, 79 * unit);
-  context.moveTo(35 * unit, 37 * unit);
-  context.lineTo(46 * unit, 78 * unit);
-  context.moveTo(65 * unit, 38 * unit);
-  context.lineTo(55 * unit, 78 * unit);
-  context.moveTo(79 * unit, 47 * unit);
-  context.lineTo(59 * unit, 80 * unit);
-  context.stroke();
-
-  context.beginPath();
-  context.arc(49 * unit, 75 * unit, 5.2 * unit, 0, Math.PI * 2);
-  context.fill();
-  context.beginPath();
-  context.moveTo(43 * unit, 76 * unit);
-  context.bezierCurveTo(38 * unit, 76 * unit, 35 * unit, 80 * unit, 39 * unit, 84 * unit);
-  context.bezierCurveTo(47 * unit, 93 * unit, 65 * unit, 97 * unit, 77 * unit, 96 * unit);
-  context.bezierCurveTo(84 * unit, 95 * unit, 84 * unit, 87 * unit, 76 * unit, 84 * unit);
-  context.lineTo(57 * unit, 77 * unit);
-  context.bezierCurveTo(53 * unit, 75 * unit, 48 * unit, 77 * unit, 43 * unit, 76 * unit);
-  context.closePath();
-  context.fill();
-  context.restore();
-}
-
 function drawTrack(
   context: CanvasRenderingContext2D,
-  points: FlightPoint[],
+  visiblePoints: FlightPoint[],
+  referencePoints: FlightPoint[],
   x: number,
   y: number,
   width: number,
@@ -451,28 +403,34 @@ function drawTrack(
   orientation: TrackOrientation,
   customRotation: number,
   showCompass: boolean,
+  complete: boolean,
 ) {
-  if (points.length < 2) return;
-  const sampled = points.length <= 900
-    ? points
-    : Array.from({ length: 900 }, (_, index) => points[Math.round((index * (points.length - 1)) / 899)]);
-  const meanLatitude = sampled.reduce((total, point) => total + point.lat, 0) / sampled.length;
-  const meanLongitude = sampled.reduce((total, point) => total + point.lon, 0) / sampled.length;
+  if (!visiblePoints.length || referencePoints.length < 2) return;
+  const referenceSample = referencePoints.length <= 900
+    ? referencePoints
+    : Array.from({ length: 900 }, (_, index) => referencePoints[Math.round((index * (referencePoints.length - 1)) / 899)]);
+  const visibleSample = visiblePoints.length <= 900
+    ? visiblePoints
+    : Array.from({ length: 900 }, (_, index) => visiblePoints[Math.round((index * (visiblePoints.length - 1)) / 899)]);
+  const meanLatitude = referenceSample.reduce((total, point) => total + point.lat, 0) / referenceSample.length;
+  const meanLongitude = referenceSample.reduce((total, point) => total + point.lon, 0) / referenceSample.length;
   const lonScale = Math.cos(toRadians(meanLatitude));
-  const projected = sampled.map((point) => ({
+  const project = (point: FlightPoint) => ({
     x: (point.lon - meanLongitude) * lonScale,
     y: point.lat - meanLatitude,
-  }));
+  });
+  const projectedReference = referenceSample.map(project);
+  const projectedVisible = visibleSample.map(project);
   const padding = 13 * lineScale;
   const availableWidth = Math.max(1, width - padding * 2);
   const availableHeight = Math.max(1, height - padding * 2);
   const rotation = orientation === "best-fit"
-    ? bestFitTrackRotation(points, projected, availableWidth, availableHeight)
+    ? bestFitTrackRotation(referencePoints, projectedReference, availableWidth, availableHeight)
     : orientation === "custom"
       ? -toRadians(customRotation)
       : 0;
-  const rotated = projected.map((point) => rotateTrackPoint(point, rotation));
-  const bounds = trackBounds(projected, rotation);
+  const rotatedVisible = projectedVisible.map((point) => rotateTrackPoint(point, rotation));
+  const bounds = trackBounds(projectedReference, rotation);
   const fitScale = Math.min(
     availableWidth / bounds.rangeX,
     availableHeight / bounds.rangeY,
@@ -488,20 +446,22 @@ function drawTrack(
   });
 
   context.save();
-  context.beginPath();
-  rotated.forEach((point, index) => {
-    const position = screenPosition(point);
-    if (index === 0) context.moveTo(position.x, position.y);
-    else context.lineTo(position.x, position.y);
-  });
-  context.strokeStyle = color;
-  context.lineWidth = Math.max(1, lineWidth * lineScale);
-  context.lineJoin = "round";
-  context.lineCap = "round";
-  context.stroke();
+  if (rotatedVisible.length > 1) {
+    context.beginPath();
+    rotatedVisible.forEach((point, index) => {
+      const position = screenPosition(point);
+      if (index === 0) context.moveTo(position.x, position.y);
+      else context.lineTo(position.x, position.y);
+    });
+    context.strokeStyle = color;
+    context.lineWidth = Math.max(1, lineWidth * lineScale);
+    context.lineJoin = "round";
+    context.lineCap = "round";
+    context.stroke();
+  }
 
-  const first = screenPosition(rotated[0]);
-  const last = screenPosition(rotated.at(-1)!);
+  const first = screenPosition(rotatedVisible[0]);
+  const last = screenPosition(rotatedVisible.at(-1)!);
   const markerRadius = Math.max(3, (4.5 + lineWidth * 0.35) * lineScale);
   context.beginPath();
   context.arc(first.x, first.y, markerRadius, 0, Math.PI * 2);
@@ -512,15 +472,22 @@ function drawTrack(
   context.fillStyle = "rgba(8, 11, 14, 0.9)";
   context.fill();
 
-  const crossRadius = markerRadius * 1.1;
-  context.beginPath();
-  context.moveTo(last.x - crossRadius, last.y - crossRadius);
-  context.lineTo(last.x + crossRadius, last.y + crossRadius);
-  context.moveTo(last.x + crossRadius, last.y - crossRadius);
-  context.lineTo(last.x - crossRadius, last.y + crossRadius);
-  context.strokeStyle = color;
-  context.lineWidth = Math.max(1.5, lineWidth * lineScale);
-  context.stroke();
+  if (complete) {
+    const crossRadius = markerRadius * 1.1;
+    context.beginPath();
+    context.moveTo(last.x - crossRadius, last.y - crossRadius);
+    context.lineTo(last.x + crossRadius, last.y + crossRadius);
+    context.moveTo(last.x + crossRadius, last.y - crossRadius);
+    context.lineTo(last.x - crossRadius, last.y + crossRadius);
+    context.strokeStyle = color;
+    context.lineWidth = Math.max(1.5, lineWidth * lineScale);
+    context.stroke();
+  } else if (rotatedVisible.length > 1) {
+    context.beginPath();
+    context.arc(last.x, last.y, markerRadius * 0.72, 0, Math.PI * 2);
+    context.fillStyle = color;
+    context.fill();
+  }
   context.restore();
 
   if (showCompass) {
@@ -530,7 +497,8 @@ function drawTrack(
 
 function drawElevation(
   context: CanvasRenderingContext2D,
-  points: FlightPoint[],
+  visiblePoints: FlightPoint[],
+  referencePoints: FlightPoint[],
   x: number,
   y: number,
   width: number,
@@ -540,19 +508,21 @@ function drawElevation(
   lineScale: number,
   lineWidth: number,
   units: UnitSystem,
+  configuredLabelFontSize: number,
   labels: { start: boolean; max: boolean; landing: boolean },
+  complete: boolean,
 ) {
-  if (points.length < 2) return;
-  const sampled = points.length <= 500
-    ? points
-    : Array.from({ length: 500 }, (_, index) => points[Math.round((index * (points.length - 1)) / 499)]);
-  const minAltitude = Math.min(...points.map((point) => point.smoothedAltitude));
-  const maxAltitude = Math.max(...points.map((point) => point.smoothedAltitude));
+  if (!visiblePoints.length || referencePoints.length < 2) return;
+  const sampled = visiblePoints.length <= 500
+    ? visiblePoints
+    : Array.from({ length: 500 }, (_, index) => visiblePoints[Math.round((index * (visiblePoints.length - 1)) / 499)]);
+  const minAltitude = Math.min(...referencePoints.map((point) => point.smoothedAltitude));
+  const maxAltitude = Math.max(...referencePoints.map((point) => point.smoothedAltitude));
   const range = Math.max(1, maxAltitude - minAltitude);
-  const totalDistance = Math.max(1, points.at(-1)!.cumulativeDistance);
+  const totalDistance = Math.max(1, referencePoints.at(-1)!.cumulativeDistance);
   const horizontalPadding = 10 * lineScale;
   const topPadding = labels.max ? 29 * lineScale : 8 * lineScale;
-  const bottomPadding = labels.start || labels.landing ? 28 * lineScale : 8 * lineScale;
+  const bottomPadding = labels.start || (labels.landing && complete) ? 28 * lineScale : 8 * lineScale;
   const plotLeft = x + horizontalPadding;
   const plotRight = x + width - horizontalPadding;
   const plotTop = y + topPadding;
@@ -573,7 +543,8 @@ function drawElevation(
   });
 
   const fill = new Path2D(line);
-  fill.lineTo(plotRight, baseline);
+  const currentPosition = pointPosition(sampled.at(-1)!);
+  fill.lineTo(currentPosition.x, baseline);
   fill.lineTo(plotLeft, baseline);
   fill.closePath();
   const gradient = context.createLinearGradient(0, y, 0, y + height);
@@ -587,7 +558,7 @@ function drawElevation(
   context.lineCap = "round";
   context.stroke(line);
 
-  const labelFontSize = Math.max(8, 11.5 * lineScale);
+  const labelFontSize = Math.max(7, configuredLabelFontSize * lineScale);
   const drawLabel = (value: number, labelX: number, labelY: number, align: CanvasTextAlign) => {
     const label = formatAltitude(value, units);
     context.textAlign = align;
@@ -605,9 +576,9 @@ function drawElevation(
     return position;
   };
 
-  const start = points[0];
-  const landing = points.at(-1)!;
-  const highest = points.reduce((best, point) => (
+  const start = visiblePoints[0];
+  const landing = visiblePoints.at(-1)!;
+  const highest = visiblePoints.reduce((best, point) => (
     point.smoothedAltitude > best.smoothedAltitude ? point : best
   ));
 
@@ -615,7 +586,7 @@ function drawElevation(
     drawPoint(start);
     drawLabel(start.smoothedAltitude, plotLeft, y + height - 4 * lineScale, "left");
   }
-  if (labels.landing) {
+  if (labels.landing && complete) {
     drawPoint(landing);
     drawLabel(landing.smoothedAltitude, plotRight, y + height - 4 * lineScale, "right");
   }
@@ -655,6 +626,8 @@ export function formatStat(key: StatKey, stats: FlightStats, units: UnitSystem) 
   switch (key) {
     case "totalDistance":
       return { label: "Track length", value: `${compactDistance(stats.totalDistance, metric ? 1_000 : 1_609.344)} ${metric ? "km" : "mi"}` };
+    case "distanceFromTakeoff":
+      return { label: "From takeoff", value: `${compactDistance(stats.distanceFromTakeoff, metric ? 1_000 : 1_609.344)} ${metric ? "km" : "mi"}` };
     case "openDistance":
       return { label: "3 turn points", value: `${compactDistance(stats.openDistance, metric ? 1_000 : 1_609.344)} ${metric ? "km" : "mi"}` };
     case "triangleDistance":
@@ -663,6 +636,8 @@ export function formatStat(key: StatKey, stats: FlightStats, units: UnitSystem) 
       return { label: "Duration", value: formatDuration(stats.duration) };
     case "averageSpeed":
       return { label: "Avg speed", value: `${(stats.averageSpeed * (metric ? 3.6 : 2.236_936)).toFixed(1)} ${metric ? "km/h" : "mph"}` };
+    case "currentSpeed":
+      return { label: "Speed", value: `${(stats.currentSpeed * (metric ? 3.6 : 2.236_936)).toFixed(1)} ${metric ? "km/h" : "mph"}` };
     case "maxAltitude":
       return { label: "Max elevation", value: formatAltitude(stats.maxAltitude, units) };
     case "elevationGain":
@@ -671,6 +646,8 @@ export function formatStat(key: StatKey, stats: FlightStats, units: UnitSystem) 
       return { label: "Max climb", value: `${(stats.maxVario * (metric ? 1 : 196.850_4)).toFixed(metric ? 1 : 0)} ${metric ? "m/s" : "ft/min"}` };
     case "minVario":
       return { label: "Max sink", value: `${(stats.minVario * (metric ? 1 : 196.850_4)).toFixed(metric ? 1 : 0)} ${metric ? "m/s" : "ft/min"}` };
+    case "currentVario":
+      return { label: "Vario", value: `${(stats.currentVario * (metric ? 1 : 196.850_4)).toFixed(metric ? 1 : 0)} ${metric ? "m/s" : "ft/min"}` };
   }
 }
 
@@ -705,25 +682,6 @@ function resolveFrame(
     width: safe.width * panelWidth,
     height: safe.height * panelHeight,
   };
-}
-
-function drawTitleElement(
-  context: CanvasRenderingContext2D,
-  title: string,
-  frame: { x: number; y: number; width: number; height: number },
-  color: string,
-  fontSize: number,
-  lineScale: number,
-) {
-  if (!title.trim()) return;
-  const scaledFontSize = Math.max(8, fontSize * lineScale);
-  context.save();
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.font = `800 ${scaledFontSize}px ui-sans-serif, system-ui, sans-serif`;
-  context.fillStyle = color;
-  context.fillText(title.trim().slice(0, 54), frame.x + frame.width / 2, frame.y + frame.height / 2, frame.width);
-  context.restore();
 }
 
 function drawStatsGroup(
@@ -783,13 +741,16 @@ export function drawOverlay(
   height: number,
   analysis: FlightAnalysis,
   settings: OverlaySettings,
+  progress = 1,
 ) {
-  const hasPanelContent = Boolean(settings.title.trim()
-    || settings.sportIcon !== "none"
-    || settings.showTrack
+  const hasPanelContent = Boolean(settings.showTrack
     || settings.showElevation
     || settings.enabledStats.length);
   if (!hasPanelContent) return;
+
+  const normalizedProgress = Math.min(1, Math.max(0, progress));
+  const snapshot = flightSnapshotAtProgress(analysis, normalizedProgress);
+  const complete = normalizedProgress >= 0.999_999;
 
   const panelWidth = width * Math.min(0.98, Math.max(0.3, settings.panelWidth));
   const panelHeight = height * Math.min(0.98, Math.max(0.3, settings.panelHeight));
@@ -815,19 +776,11 @@ export function drawOverlay(
   roundedRect(context, panelX, panelY, panelWidth, panelHeight, isMinimal ? 0 : 22 * scale);
   context.clip();
 
-  drawTitleElement(
-    context,
-    settings.title,
-    resolveFrame(panelX, panelY, panelWidth, panelHeight, settings.elementFrames.title),
-    effectiveText,
-    settings.titleFontSize,
-    scale,
-  );
-
   if (settings.showTrack) {
     const frame = resolveFrame(panelX, panelY, panelWidth, panelHeight, settings.elementFrames.track);
     drawTrack(
       context,
+      snapshot.points,
       analysis.points,
       frame.x,
       frame.y,
@@ -839,6 +792,7 @@ export function drawOverlay(
       settings.trackOrientation,
       settings.trackRotation,
       settings.showCompass,
+      complete,
     );
   }
 
@@ -846,6 +800,7 @@ export function drawOverlay(
     const frame = resolveFrame(panelX, panelY, panelWidth, panelHeight, settings.elementFrames.elevation);
     drawElevation(
       context,
+      snapshot.points,
       analysis.points,
       frame.x,
       frame.y,
@@ -856,18 +811,20 @@ export function drawOverlay(
       scale,
       settings.elevationLineWidth,
       settings.units,
+      settings.elevationLabelFontSize,
       {
         start: settings.showStartAltitude,
         max: settings.showMaxAltitude,
         landing: settings.showLandingAltitude,
       },
+      complete,
     );
   }
 
   drawStatsGroup(
     context,
     settings.enabledStats,
-    analysis.stats,
+    snapshot.stats,
     settings.units,
     resolveFrame(panelX, panelY, panelWidth, panelHeight, settings.elementFrames.stats),
     effectiveText,
@@ -877,19 +834,6 @@ export function drawOverlay(
     settings.statLabelFontSize,
     settings.statValueFontSize,
   );
-
-  if (settings.sportIcon !== "none") {
-    const frame = resolveFrame(panelX, panelY, panelWidth, panelHeight, settings.elementFrames.sportIcon);
-    const size = Math.min(frame.width, frame.height);
-    drawSportIcon(
-      context,
-      settings.sportIcon,
-      frame.x + (frame.width - size) / 2,
-      frame.y + (frame.height - size) / 2,
-      size,
-      settings.accentColor,
-    );
-  }
   context.restore();
 }
 
@@ -899,13 +843,14 @@ export function renderComposite(
   analysis: FlightAnalysis | null,
   settings: OverlaySettings,
   transparent = false,
+  progress = 1,
 ) {
   const context = canvas.getContext("2d");
   if (!context) return;
   context.clearRect(0, 0, canvas.width, canvas.height);
   if (!transparent) {
     if (media) drawMedia(context, media, canvas.width, canvas.height, settings.fit);
-    else drawEmptyMedia(context, canvas.width, canvas.height);
+    else drawEmptyMedia(context, canvas.width, canvas.height, !analysis);
   }
-  if (analysis) drawOverlay(context, canvas.width, canvas.height, analysis, settings);
+  if (analysis) drawOverlay(context, canvas.width, canvas.height, analysis, settings, progress);
 }

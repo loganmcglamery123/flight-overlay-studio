@@ -156,6 +156,10 @@ select {
   gap: 0.65rem;
 }
 
+.header-actions {
+  flex: 0 0 auto;
+}
+
 .brand-mark {
   display: grid;
   width: 2rem;
@@ -226,8 +230,7 @@ select {
 }
 
 .action-toolbar__files,
-.action-toolbar__editing,
-.action-toolbar__export {
+.action-toolbar__editing {
   display: flex;
   min-width: 0;
   align-items: center;
@@ -239,8 +242,33 @@ select {
   border-left: 1px solid var(--border);
 }
 
-.action-toolbar__export {
-  margin-left: auto;
+
+.animation-speed {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.animation-speed label,
+.animation-fit-note {
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.animation-speed button {
+  width: 5.4rem;
+  height: 2rem;
+}
+
+.animation-fit-note {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid rgba(217, 255, 67, 0.2);
+  border-radius: 999px;
+  color: #d9e7a8;
+  background: rgba(217, 255, 67, 0.055);
 }
 
 .toolbar-upload {
@@ -849,15 +877,8 @@ select {
   }
 
   .action-toolbar__files,
-  .action-toolbar__editing,
-  .action-toolbar__export {
+  .action-toolbar__editing {
     flex: 0 0 auto;
-  }
-
-  .action-toolbar__export {
-    margin-left: 0;
-    padding-left: 0.55rem;
-    border-left: 1px solid var(--border);
   }
 
   .toolbar-upload {
@@ -953,6 +974,10 @@ select {
 
   .header-actions button {
     padding-inline: 0.45rem;
+  }
+
+  .header-button-label {
+    display: none;
   }
 
   .toolbar-upload {

@@ -3,6 +3,7 @@
 import {
   Check,
   Download,
+  FastForward,
   FileText,
   Image as ImageIcon,
   Layers3,
@@ -24,7 +25,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -51,6 +51,14 @@ import {
 } from "@/lib/render-overlay";
 
 type MediaKind = "image" | "video";
+
+const INSTAGRAM_LANDSCAPE_SIZE = { width: 1_080, height: 566 };
+const ANIMATED_STAT_DEFAULTS: StatKey[] = [
+  "distanceFromTakeoff",
+  "currentSpeed",
+  "duration",
+  "currentVario",
+];
 
 type MediaState = {
   file: File;
@@ -227,8 +235,6 @@ function elementLabel(id: OverlayElementId | null) {
   if (id === "track") return "Track outline";
   if (id === "elevation") return "Altitude graph";
   if (id === "stats") return "Statistics";
-  if (id === "sportIcon") return "Paraglider icon";
-  if (id === "title") return "Flight title";
   return "Overlay element";
 }
 
@@ -236,8 +242,6 @@ function frameMinimum(id: OverlayElementId) {
   if (id === "track") return { width: 0.2, height: 0.16 };
   if (id === "elevation") return { width: 0.24, height: 0.09 };
   if (id === "stats") return { width: 0.24, height: 0.08 };
-  if (id === "sportIcon") return { width: 0.045, height: 0.045 };
-  if (id === "title") return { width: 0.18, height: 0.05 };
   return { width: 0.12, height: 0.055 };
 }
 
@@ -278,6 +282,8 @@ export default function Home() {
   const [parsing, setParsing] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoPlaying, setVideoPlaying] = useState(false);
+  const [photoAnimationProgress, setPhotoAnimationProgress] = useState(0);
+  const [photoAnimationPlaying, setPhotoAnimationPlaying] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [includeAudio, setIncludeAudio] = useState(true);
@@ -289,6 +295,9 @@ export default function Home() {
   const imageRef = useRef<HTMLImageElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const animationRef = useRef<number | null>(null);
+  const photoAnimationProgressRef = useRef(0);
+  const photoAnimationStartedAtRef = useRef(0);
+  const staticStatsRef = useRef<StatKey[]>(createDefaultSettings().enabledStats);
   const mediaUrlRef = useRef<string | null>(null);
   const interactionRef = useRef<ActiveInteraction | null>(null);
   const exportRef = useRef<{ cancelled: boolean; recorder: MediaRecorder | null }>({
@@ -297,7 +306,7 @@ export default function Home() {
   });
 
   const previewSize = useMemo(() => {
-    if (!media?.width || !media.height) return { width: 1_200, height: 675 };
+    if (!media?.width || !media.height) return INSTAGRAM_LANDSCAPE_SIZE;
     const aspect = media.width / media.height;
     if (aspect >= 1) return { width: 1_200, height: Math.max(420, Math.round(1_200 / aspect)) };
     return { width: Math.max(520, Math.round(1_000 * aspect)), height: 1_000 };
@@ -322,17 +331,25 @@ export default function Home() {
     return media.kind === "image" ? imageRef.current : videoRef.current;
   };
 
-  const drawPreview = () => {
+  const drawPreview = (progressOverride?: number) => {
     const canvas = previewCanvasRef.current;
     if (!canvas) return;
     if (canvas.width !== previewSize.width || canvas.height !== previewSize.height) {
       canvas.width = previewSize.width;
       canvas.height = previewSize.height;
     }
-    renderComposite(canvas, currentMediaElement(), analysis, settings);
+    const video = videoRef.current;
+    const progress = progressOverride ?? (
+      settings.animateTrack
+        ? media?.kind === "video" && video && media.duration > 0
+          ? video.currentTime / media.duration
+          : photoAnimationProgressRef.current
+        : 1
+    );
+    renderComposite(canvas, currentMediaElement(), analysis, settings, false, progress);
   };
 
-  const drawPreviewRef = useRef(drawPreview);
+  const drawPreviewRef = useRef<(progressOverride?: number) => void>(drawPreview);
 
   useEffect(() => {
     drawPreviewRef.current = drawPreview;
@@ -445,7 +462,10 @@ export default function Home() {
     if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
     const tick = () => {
       const video = videoRef.current;
-      drawPreviewRef.current();
+      const progress = video && media?.duration
+        ? Math.min(1, video.currentTime / media.duration)
+        : 0;
+      drawPreviewRef.current(progress);
       if (video && !video.paused && !video.ended) {
         setVideoProgress(video.currentTime);
         animationRef.current = requestAnimationFrame(tick);
@@ -463,6 +483,67 @@ export default function Home() {
     drawPreviewRef.current();
   };
 
+  const stopPhotoAnimation = () => {
+    setPhotoAnimationPlaying(false);
+    if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
+    animationRef.current = null;
+  };
+
+  const startPhotoAnimation = () => {
+    if (!analysis || media?.kind === "video" || exporting) return;
+    if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
+    if (photoAnimationProgressRef.current >= 0.999_999) {
+      photoAnimationProgressRef.current = 0;
+      setPhotoAnimationProgress(0);
+    }
+    const playbackDuration = Math.max(0.6, analysis.stats.duration / settings.photoAnimationSpeed);
+    photoAnimationStartedAtRef.current = performance.now()
+      - photoAnimationProgressRef.current * playbackDuration * 1_000;
+    setPhotoAnimationPlaying(true);
+
+    const tick = (time: number) => {
+      const progress = Math.min(1, (time - photoAnimationStartedAtRef.current) / (playbackDuration * 1_000));
+      photoAnimationProgressRef.current = progress;
+      setPhotoAnimationProgress(progress);
+      drawPreviewRef.current(progress);
+      if (progress < 1) animationRef.current = requestAnimationFrame(tick);
+      else {
+        animationRef.current = null;
+        setPhotoAnimationPlaying(false);
+      }
+    };
+    animationRef.current = requestAnimationFrame(tick);
+  };
+
+  const togglePhotoPlayback = () => {
+    if (photoAnimationPlaying) stopPhotoAnimation();
+    else startPhotoAnimation();
+  };
+
+  const setAnimationEnabled = (enabled: boolean) => {
+    if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
+    animationRef.current = null;
+    setPhotoAnimationPlaying(false);
+    photoAnimationProgressRef.current = 0;
+    setPhotoAnimationProgress(0);
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+    setVideoProgress(0);
+    setSettings((current) => {
+      if (enabled && !current.animateTrack) staticStatsRef.current = [...current.enabledStats];
+      return {
+        ...current,
+        animateTrack: enabled,
+        enabledStats: enabled
+          ? [...ANIMATED_STAT_DEFAULTS]
+          : [...staticStatsRef.current],
+      };
+    });
+    setSelectedElement("stats");
+  };
+
   const handleIgc = async (file: File) => {
     setError(null);
     setMessage(null);
@@ -472,6 +553,8 @@ export default function Home() {
       const parsed = parseIgc(await file.text());
       setAnalysis(parsed);
       setIgcName(file.name);
+      photoAnimationProgressRef.current = 0;
+      setPhotoAnimationProgress(0);
       setMessage(
         `Loaded ${parsed.points.length.toLocaleString("en-US")} fixes${parsed.ignoredFixes ? `; ignored ${parsed.ignoredFixes} invalid fixes` : ""}.`,
       );
@@ -492,6 +575,12 @@ export default function Home() {
       return;
     }
 
+    videoRef.current?.pause();
+    if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
+    animationRef.current = null;
+    setPhotoAnimationPlaying(false);
+    photoAnimationProgressRef.current = 0;
+    setPhotoAnimationProgress(0);
     if (mediaUrlRef.current) URL.revokeObjectURL(mediaUrlRef.current);
     const url = URL.createObjectURL(file);
     mediaUrlRef.current = url;
@@ -501,6 +590,18 @@ export default function Home() {
     setMedia({ file, kind, url, width: 0, height: 0, duration: 0 });
     setVideoProgress(0);
     setVideoPlaying(false);
+
+    if (kind === "video") {
+      setSettings((current) => {
+        if (!current.animateTrack) staticStatsRef.current = [...current.enabledStats];
+        return {
+          ...current,
+          animateTrack: true,
+          enabledStats: [...ANIMATED_STAT_DEFAULTS],
+        };
+      });
+      setSelectedElement("stats");
+    }
 
     if (kind === "image") {
       const image = new window.Image();
@@ -572,28 +673,22 @@ export default function Home() {
   const removeElement = (id: OverlayElementId) => {
     if (id === "track") updateSettings("showTrack", false);
     else if (id === "elevation") updateSettings("showElevation", false);
-    else if (id === "sportIcon") updateSettings("sportIcon", "none");
-    else if (id === "title") updateSettings("title", "");
     else if (id === "stats") updateSettings("enabledStats", []);
     setSelectedElement(null);
   };
 
-  const restoreElement = (id: "track" | "elevation" | "sportIcon" | "title", checked: boolean) => {
+  const restoreElement = (id: "track" | "elevation", checked: boolean) => {
     if (id === "track") updateSettings("showTrack", checked);
-    else if (id === "elevation") updateSettings("showElevation", checked);
-    else if (id === "sportIcon") updateSettings("sportIcon", checked ? "paraglider" : "none");
-    else updateSettings("title", checked ? (settings.title || "My flight") : "");
+    else updateSettings("showElevation", checked);
   };
 
   const visibleElements = useMemo<OverlayElementId[]>(() => {
     const items: OverlayElementId[] = [];
-    if (settings.title.trim()) items.push("title");
     if (settings.showTrack) items.push("track");
     if (settings.showElevation) items.push("elevation");
     if (settings.enabledStats.length) items.push("stats");
-    if (settings.sportIcon !== "none") items.push("sportIcon");
     return items;
-  }, [settings.enabledStats, settings.showElevation, settings.showTrack, settings.sportIcon, settings.title]);
+  }, [settings.enabledStats, settings.showElevation, settings.showTrack]);
 
   const toggleVideoPlayback = async () => {
     const video = videoRef.current;
@@ -610,6 +705,10 @@ export default function Home() {
     }
   };
 
+  const exportBaseName = () => safeName(
+    (media?.file.name ?? igcName ?? "flight-overlay").replace(/\.[^.]+$/, ""),
+  );
+
   const exportImage = async () => {
     if (!analysis || !media || media.kind !== "image" || !imageRef.current) return;
     setError(null);
@@ -618,9 +717,9 @@ export default function Home() {
       const canvas = document.createElement("canvas");
       canvas.width = media.width;
       canvas.height = media.height;
-      renderComposite(canvas, imageRef.current, analysis, settings);
+      renderComposite(canvas, imageRef.current, analysis, settings, false, 1);
       const blob = await canvasToBlob(canvas, "image/jpeg", 1);
-      downloadBlob(blob, `${safeName(settings.title || media.file.name)}-overlay.jpg`);
+      downloadBlob(blob, `${exportBaseName()}-overlay.jpg`);
       setMessage("Downloaded a full-resolution, maximum-quality JPEG.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The photo could not be exported.");
@@ -628,26 +727,122 @@ export default function Home() {
   };
 
   const exportSticker = async () => {
-    if (!analysis || !media || !media.width || !media.height) return;
+    if (!analysis) return;
     setError(null);
     setMessage(null);
     try {
       const canvas = document.createElement("canvas");
-      canvas.width = media.width;
-      canvas.height = media.height;
-      renderComposite(canvas, null, analysis, settings, true);
+      canvas.width = media?.width || INSTAGRAM_LANDSCAPE_SIZE.width;
+      canvas.height = media?.height || INSTAGRAM_LANDSCAPE_SIZE.height;
+      renderComposite(canvas, null, analysis, settings, true, 1);
       const blob = await canvasToBlob(canvas);
-      downloadBlob(blob, `${safeName(settings.title || media.file.name)}-sticker.png`);
-      setMessage("Downloaded a transparent PNG at the source dimensions.");
+      downloadBlob(blob, `${exportBaseName()}-sticker.png`);
+      setMessage(media
+        ? "Downloaded a transparent PNG at the source dimensions."
+        : "Downloaded a transparent Instagram-landscape PNG.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The transparent sticker could not be exported.");
     }
   };
 
-  const cancelVideoExport = () => {
+  const cancelExport = () => {
     exportRef.current.cancelled = true;
     videoRef.current?.pause();
     if (exportRef.current.recorder?.state === "recording") exportRef.current.recorder.stop();
+  };
+
+  const exportPhotoAnimation = async () => {
+    const image = media?.kind === "image" ? imageRef.current : null;
+    if (!analysis || media?.kind === "video" || (media?.kind === "image" && !image)) return;
+    if (!('MediaRecorder' in window) || !(HTMLCanvasElement.prototype as HTMLCanvasElement & { captureStream?: unknown }).captureStream) {
+      setError("Animated export is not supported here. Use a current Chrome or Edge browser.");
+      return;
+    }
+    const mp4MimeType = bestMp4RecorderType();
+    if (!mp4MimeType) {
+      setError("This browser cannot record MP4 video. Try the latest Chrome, Edge, or Safari.");
+      return;
+    }
+
+    stopPhotoAnimation();
+    setError(null);
+    setMessage(null);
+    setExporting(true);
+    setExportProgress(0);
+    exportRef.current = { cancelled: false, recorder: null };
+    let outputStream: MediaStream | null = null;
+    let recordingResult: Promise<Blob> | null = null;
+
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = media?.width || INSTAGRAM_LANDSCAPE_SIZE.width;
+      canvas.height = media?.height || INSTAGRAM_LANDSCAPE_SIZE.height;
+      const activeOutputStream = canvas.captureStream(30);
+      outputStream = activeOutputStream;
+      const recorder = new MediaRecorder(activeOutputStream, {
+        mimeType: mp4MimeType,
+        videoBitsPerSecond: canvas.width >= 2_560 ? 18_000_000 : canvas.width >= 1_920 ? 10_000_000 : 6_000_000,
+      });
+      exportRef.current.recorder = recorder;
+      const chunks: BlobPart[] = [];
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size) chunks.push(event.data);
+      });
+      recordingResult = new Promise<Blob>((resolve, reject) => {
+        recorder.addEventListener("error", () => reject(new Error("The browser stopped the animation recording.")), { once: true });
+        recorder.addEventListener("stop", () => {
+          if (exportRef.current.cancelled) {
+            reject(new Error("Animation export cancelled."));
+            return;
+          }
+          resolve(new Blob(chunks, { type: recorder.mimeType || "video/mp4" }));
+        }, { once: true });
+      });
+
+      const exportDuration = Math.max(0.6, analysis.stats.duration / settings.photoAnimationSpeed);
+      renderComposite(canvas, image, analysis, settings, false, 0);
+      // Keep MP4 as one continuous recording. Periodic MP4 chunks can play in
+      // sequence while exposing only the first fragment's duration to players.
+      recorder.start();
+      await new Promise<void>((resolve) => {
+        const startedAt = performance.now();
+        const paint = (time: number) => {
+          if (exportRef.current.cancelled) {
+            resolve();
+            return;
+          }
+          const progress = Math.min(1, (time - startedAt) / (exportDuration * 1_000));
+          renderComposite(canvas, image, analysis, settings, false, progress);
+          setExportProgress(progress);
+          if (progress < 1) requestAnimationFrame(paint);
+          else {
+            window.setTimeout(() => {
+              if (recorder.state === "recording") recorder.stop();
+              resolve();
+            }, 90);
+          }
+        };
+        requestAnimationFrame(paint);
+      });
+      const blob = await recordingResult;
+      downloadBlob(blob, `${exportBaseName()}-animated-overlay.mp4`);
+      setMessage(`Animated overlay downloaded as MP4 at ${settings.photoAnimationSpeed}× speed.`);
+    } catch (caught) {
+      const text = caught instanceof Error ? caught.message : "The animation could not be exported.";
+      if (text !== "Animation export cancelled.") setError(text);
+      else setMessage(text);
+    } finally {
+      if (exportRef.current.recorder?.state === "recording") {
+        exportRef.current.cancelled = true;
+        exportRef.current.recorder.stop();
+      }
+      if (recordingResult) await recordingResult.catch(() => undefined);
+      outputStream?.getTracks().forEach((track) => track.stop());
+      exportRef.current.recorder = null;
+      setExporting(false);
+      setExportProgress(0);
+      drawPreviewRef.current();
+    }
   };
 
   const exportVideo = async () => {
@@ -716,20 +911,22 @@ export default function Home() {
       });
 
       const paint = () => {
-        renderComposite(canvas, video, analysis, settings);
-        setExportProgress(video.duration ? Math.min(1, video.currentTime / video.duration) : 0);
+        const progress = video.duration ? Math.min(1, video.currentTime / video.duration) : 0;
+        renderComposite(canvas, video, analysis, settings, false, settings.animateTrack ? progress : 1);
+        setExportProgress(progress);
         if (!video.ended && !exportRef.current.cancelled) requestAnimationFrame(paint);
       };
 
       video.muted = true;
-      recorder.start(1_000);
+      // A single MP4 segment preserves the full source duration in the seek bar.
+      recorder.start();
       video.addEventListener("ended", () => {
         if (recorder.state === "recording") recorder.stop();
       }, { once: true });
       await video.play();
       paint();
       const blob = await recordingResult;
-      downloadBlob(blob, `${safeName(settings.title || media.file.name)}-overlay.mp4`);
+      downloadBlob(blob, `${exportBaseName()}-overlay.mp4`);
       setMessage(
         includeAudio && activeOutputStream.getAudioTracks().length === 0
           ? "Video downloaded without audio because the browser did not expose its audio track."
@@ -765,13 +962,22 @@ export default function Home() {
 
   const resetLayout = () => {
     const defaults = createDefaultSettings();
-    setSettings((current) => ({ ...defaults, units: current.units, fit: current.fit }));
+    setSettings((current) => ({
+      ...defaults,
+      units: current.units,
+      fit: current.fit,
+      animateTrack: current.animateTrack,
+      photoAnimationSpeed: current.photoAnimationSpeed,
+      enabledStats: current.animateTrack ? current.enabledStats : defaults.enabledStats,
+    }));
     setSelectedElement("track");
     setElementsOpen(false);
   };
 
   const reset = () => {
-    if (exporting) cancelVideoExport();
+    if (exporting) cancelExport();
+    if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
+    animationRef.current = null;
     if (mediaUrlRef.current) URL.revokeObjectURL(mediaUrlRef.current);
     mediaUrlRef.current = null;
     imageRef.current = null;
@@ -787,10 +993,25 @@ export default function Home() {
     setMessage(null);
     setVideoProgress(0);
     setVideoPlaying(false);
+    photoAnimationProgressRef.current = 0;
+    setPhotoAnimationProgress(0);
+    setPhotoAnimationPlaying(false);
+    staticStatsRef.current = createDefaultSettings().enabledStats;
   };
 
   const selectedFrame = selectedElement ? settings.elementFrames[selectedElement] : null;
-  const readyToExport = Boolean(analysis && mediaReady && media);
+  const readyToExport = Boolean(analysis && (!media || mediaReady));
+  const primaryExportLabel = media?.kind === "video" || settings.animateTrack
+    ? "MP4"
+    : media?.kind === "image"
+      ? "JPG"
+      : "PNG";
+  const exportPrimary = () => {
+    if (media?.kind === "video") void exportVideo();
+    else if (settings.animateTrack) void exportPhotoAnimation();
+    else if (media?.kind === "image") void exportImage();
+    else void exportSticker();
+  };
   const panelLeft = (1 - settings.panelWidth) / 2;
   const panelTop = (1 - settings.panelHeight) / 2;
 
@@ -838,8 +1059,24 @@ export default function Home() {
           </div>
           <div className="header-actions">
             <span className="privacy-pill"><ShieldCheck aria-hidden="true" /> Local processing</span>
+            {analysis && (exporting ? (
+              <Button variant="outline" size="sm" onClick={cancelExport}>
+                <X aria-hidden="true" /> <span className="header-button-label">Cancel {Math.round(exportProgress * 100)}%</span>
+              </Button>
+            ) : (
+              <>
+                {media && (
+                  <Button variant="outline" size="sm" disabled={!readyToExport} onClick={() => void exportSticker()}>
+                    <Sticker aria-hidden="true" /> <span className="header-button-label">Sticker PNG</span>
+                  </Button>
+                )}
+                <Button size="sm" disabled={!readyToExport} onClick={exportPrimary}>
+                  <Download aria-hidden="true" /> <span className="header-button-label">Download </span>{primaryExportLabel}
+                </Button>
+              </>
+            ))}
             {(analysis || media) && (
-              <Button variant="ghost" size="sm" onClick={reset}><RotateCcw aria-hidden="true" /> Start over</Button>
+              <Button variant="ghost" size="sm" onClick={reset}><RotateCcw aria-hidden="true" /> <span className="header-button-label">Start over</span></Button>
             )}
           </div>
         </div>
@@ -875,28 +1112,37 @@ export default function Home() {
             >
               <Layers3 aria-hidden="true" /> Elements
             </Button>
+            <Button
+              variant={settings.animateTrack ? "secondary" : "outline"}
+              size="sm"
+              onClick={() => setAnimationEnabled(!settings.animateTrack)}
+              disabled={exporting}
+              aria-pressed={settings.animateTrack}
+            >
+              <FastForward aria-hidden="true" /> Animate
+            </Button>
+            {settings.animateTrack && media?.kind !== "video" && (
+              <div className="animation-speed">
+                <Label htmlFor="photo-animation-speed">Speed</Label>
+                <Select
+                  value={String(settings.photoAnimationSpeed)}
+                  onValueChange={(value) => updateSettings("photoAnimationSpeed", Number(value))}
+                >
+                  <SelectTrigger id="photo-animation-speed" aria-label="Photo animation speed"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {[120, 240, 480, 960].map((speed) => (
+                      <SelectItem key={speed} value={String(speed)}>{speed}×</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {settings.animateTrack && media?.kind === "video" && (
+              <span className="animation-fit-note">Track fits video</span>
+            )}
             <Button variant="outline" size="sm" onClick={resetLayout}>
               <RotateCcw aria-hidden="true" /> Reset layout
             </Button>
-          </div>
-
-          <div className="action-toolbar__export">
-            {exporting ? (
-              <Button variant="outline" size="sm" onClick={cancelVideoExport}><X aria-hidden="true" /> Cancel</Button>
-            ) : (
-              <>
-                <Button variant="outline" size="sm" disabled={!readyToExport} onClick={exportSticker}>
-                  <Sticker aria-hidden="true" /> <span>Sticker PNG</span>
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={!readyToExport}
-                  onClick={media?.kind === "video" ? exportVideo : exportImage}
-                >
-                  <Download aria-hidden="true" /> <span>{media?.kind === "video" ? "MP4" : "JPG"}</span>
-                </Button>
-              </>
-            )}
           </div>
         </div>
 
@@ -927,13 +1173,11 @@ export default function Home() {
                 {[
                   ["track", "Track outline", settings.showTrack],
                   ["elevation", "Altitude graph", settings.showElevation],
-                  ["sportIcon", "Paraglider icon", settings.sportIcon !== "none"],
-                  ["title", "Flight title", Boolean(settings.title.trim())],
                 ].map(([id, label, checked]) => (
                   <label className="element-toggle" key={id as string}>
                     <Checkbox
                       checked={checked as boolean}
-                      onCheckedChange={(value) => restoreElement(id as "track" | "elevation" | "sportIcon" | "title", value === true)}
+                      onCheckedChange={(value) => restoreElement(id as "track" | "elevation", value === true)}
                     />
                     <span>{label as string}</span>
                   </label>
@@ -1082,6 +1326,39 @@ export default function Home() {
               <span>{formatDuration(videoProgress)} / {formatDuration(media.duration)}</span>
             </div>
           )}
+
+          {analysis && settings.animateTrack && media?.kind !== "video" && (
+            <div className="video-controls video-controls--floating">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={togglePhotoPlayback}
+                disabled={exporting}
+                aria-label={photoAnimationPlaying ? "Pause animation" : "Play animation"}
+              >
+                {photoAnimationPlaying ? <Pause /> : <Play />}
+              </Button>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.001}
+                value={photoAnimationProgress}
+                disabled={exporting}
+                aria-label="Animation position"
+                onChange={(event) => {
+                  stopPhotoAnimation();
+                  const value = Number(event.target.value);
+                  photoAnimationProgressRef.current = value;
+                  setPhotoAnimationProgress(value);
+                  drawPreviewRef.current(value);
+                }}
+              />
+              <span>
+                {formatDuration(analysis.stats.duration * photoAnimationProgress)} / {formatDuration(analysis.stats.duration)} · {settings.photoAnimationSpeed}×
+              </span>
+            </div>
+          )}
         </section>
 
         <section className="inspector-dock" aria-label="Selected element settings">
@@ -1174,6 +1451,16 @@ export default function Home() {
                   display={`${settings.elevationLineWidth.toFixed(1)} px`}
                   onChange={(value) => updateSettings("elevationLineWidth", value)}
                 />
+                <RangeField
+                  id="elevation-label-font-size"
+                  label="Label font size"
+                  min={8}
+                  max={32}
+                  step={1}
+                  value={settings.elevationLabelFontSize}
+                  display={`${Math.round(settings.elevationLabelFontSize)} px`}
+                  onChange={(value) => updateSettings("elevationLabelFontSize", value)}
+                />
                 {[
                   ["Start", "showStartAltitude", settings.showStartAltitude],
                   ["Maximum", "showMaxAltitude", settings.showMaxAltitude],
@@ -1190,32 +1477,6 @@ export default function Home() {
                     <span>{label as string}</span>
                   </label>
                 ))}
-              </>
-            )}
-
-            {selectedElement === "sportIcon" && (
-              <>
-                <ColorField id="accent-color-icon" label="Icon color" value={settings.accentColor} onChange={(value) => updateSettings("accentColor", value)} />
-              </>
-            )}
-
-            {selectedElement === "title" && (
-              <>
-                <div className="compact-field compact-field--wide">
-                  <Label htmlFor="flight-title">Title</Label>
-                  <Input id="flight-title" value={settings.title} maxLength={54} onChange={(event) => updateSettings("title", event.target.value)} />
-                </div>
-                <RangeField
-                  id="title-font-size"
-                  label="Title font size"
-                  min={12}
-                  max={72}
-                  step={1}
-                  value={settings.titleFontSize}
-                  display={`${Math.round(settings.titleFontSize)} px`}
-                  onChange={(value) => updateSettings("titleFontSize", value)}
-                />
-                <ColorField id="title-color" label="Text color" value={settings.textColor} onChange={(value) => updateSettings("textColor", value)} />
               </>
             )}
 

@@ -16,7 +16,7 @@ const vite = await createServer({
 after(async () => vite.close());
 
 test("parses valid B records and computes core flight statistics", async () => {
-  const { parseIgc } = await vite.ssrLoadModule("/lib/flight.ts");
+  const { flightSnapshotAtProgress, parseIgc } = await vite.ssrLoadModule("/lib/flight.ts");
   const igc = [
     "AXXXFLIGHTOVERLAY",
     "HFDTE010826",
@@ -34,12 +34,26 @@ test("parses valid B records and computes core flight statistics", async () => {
   assert.ok(result.stats.totalDistance > 3_000);
   assert.ok(result.stats.openDistance > 0);
   assert.ok(result.stats.triangleDistance > 0);
+  assert.ok(Number.isFinite(result.stats.distanceFromTakeoff));
+  assert.ok(Number.isFinite(result.stats.currentSpeed));
+  assert.ok(Number.isFinite(result.stats.currentVario));
   assert.equal(
     result.stats.elevationGain,
     result.stats.maxAltitude - result.points[0].smoothedAltitude,
   );
   assert.equal(result.metadata.date, "2026-08-01");
   assert.equal(result.metadata.pilot, "Test Pilot");
+
+  const halfway = flightSnapshotAtProgress(result, 0.5);
+  assert.equal(halfway.stats.duration, result.stats.duration / 2);
+  assert.ok(halfway.stats.totalDistance < result.stats.totalDistance);
+  assert.ok(halfway.points.length < result.points.length);
+  assert.ok(Number.isFinite(halfway.stats.currentSpeed));
+  assert.ok(Number.isFinite(halfway.stats.currentVario));
+  assert.equal(
+    flightSnapshotAtProgress(result, 1).stats.totalDistance,
+    result.stats.totalDistance,
+  );
 });
 
 test("rejects a file without a usable track", async () => {
@@ -65,13 +79,10 @@ test("formats altitude labels and exposes direct-edit overlay defaults", async (
   assert.ok(DEFAULT_SETTINGS.elementFrames.stats.width > 0.8);
   assert.equal(DEFAULT_SETTINGS.statColumns, 2);
   assert.ok(DEFAULT_SETTINGS.statValueFontSize > DEFAULT_SETTINGS.statLabelFontSize);
-  assert.equal(
-    DEFAULT_SETTINGS.elementFrames.sportIcon.x + DEFAULT_SETTINGS.elementFrames.sportIcon.width / 2,
-    0.5,
-  );
-  assert.ok(DEFAULT_SETTINGS.elementFrames.sportIcon.y > 0.9);
+  assert.equal(DEFAULT_SETTINGS.elevationLabelFontSize, 12);
+  assert.equal(DEFAULT_SETTINGS.animateTrack, false);
+  assert.equal(DEFAULT_SETTINGS.photoAnimationSpeed, 480);
   assert.equal(DEFAULT_SETTINGS.showCompass, false);
-  assert.equal(DEFAULT_SETTINGS.sportIcon, "paraglider");
   assert.deepEqual(DEFAULT_SETTINGS.enabledStats, [
     "openDistance",
     "duration",

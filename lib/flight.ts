@@ -12,15 +12,18 @@ export type FlightPoint = {
 
 export type FlightStats = {
   totalDistance: number;
+  distanceFromTakeoff: number;
   openDistance: number;
   triangleDistance: number;
   duration: number;
   averageSpeed: number;
+  currentSpeed: number;
   maxAltitude: number;
   minAltitude: number;
   elevationGain: number;
   maxVario: number;
   minVario: number;
+  currentVario: number;
 };
 
 export type FlightAnalysis = {
@@ -34,6 +37,11 @@ export type FlightAnalysis = {
   openRoute: FlightPoint[];
   triangleRoute: FlightPoint[];
   ignoredFixes: number;
+};
+
+export type FlightSnapshot = {
+  points: FlightPoint[];
+  stats: FlightStats;
 };
 
 const EARTH_RADIUS_METERS = 6_371_008.8;
@@ -314,20 +322,35 @@ export function parseIgc(text: string): FlightAnalysis {
   const smoothedAltitudes = points.map((point) => point.smoothedAltitude);
   const maxAltitude = Math.max(...smoothedAltitudes);
   const elevationGain = Math.max(0, maxAltitude - points[0].smoothedAltitude);
+  const lastPoint = points.at(-1)!;
+  let motionStart = Math.max(0, points.length - 2);
+  while (motionStart > 0 && lastPoint.seconds - points[motionStart].seconds < 5) {
+    motionStart -= 1;
+  }
+  const motionDuration = lastPoint.seconds - points[motionStart].seconds;
+  const currentSpeed = motionDuration > 0
+    ? (lastPoint.cumulativeDistance - points[motionStart].cumulativeDistance) / motionDuration
+    : 0;
+  const currentVario = motionDuration > 0
+    ? (lastPoint.smoothedAltitude - points[motionStart].smoothedAltitude) / motionDuration
+    : 0;
 
   return {
     points,
     stats: {
       totalDistance: cumulativeDistance,
+      distanceFromTakeoff: haversine(points[0], lastPoint),
       openDistance: open.distance,
       triangleDistance: triangle.distance,
       duration,
       averageSpeed: duration > 0 ? cumulativeDistance / duration : 0,
+      currentSpeed,
       maxAltitude,
       minAltitude: Math.min(...smoothedAltitudes),
       elevationGain,
       maxVario: Number.isFinite(maxVario) ? maxVario : 0,
       minVario: Number.isFinite(minVario) ? minVario : 0,
+      currentVario,
     },
     metadata: {
       date: parseDate(lines),
@@ -337,5 +360,107 @@ export function parseIgc(text: string): FlightAnalysis {
     openRoute: open.route,
     triangleRoute: triangle.route,
     ignoredFixes,
+  };
+}
+
+function interpolateNumber(start: number, end: number, ratio: number) {
+  return start + (end - start) * ratio;
+}
+
+function interpolateNullable(start: number | null, end: number | null, ratio: number) {
+  if (start === null || end === null) return end ?? start;
+  return interpolateNumber(start, end, ratio);
+}
+
+function interpolatedPoint(start: FlightPoint, end: FlightPoint, elapsed: number): FlightPoint {
+  const span = Math.max(1e-9, end.elapsed - start.elapsed);
+  const ratio = Math.min(1, Math.max(0, (elapsed - start.elapsed) / span));
+  return {
+    lat: interpolateNumber(start.lat, end.lat, ratio),
+    lon: interpolateNumber(start.lon, end.lon, ratio),
+    altitude: interpolateNumber(start.altitude, end.altitude, ratio),
+    pressureAltitude: interpolateNullable(start.pressureAltitude, end.pressureAltitude, ratio),
+    gpsAltitude: interpolateNullable(start.gpsAltitude, end.gpsAltitude, ratio),
+    seconds: interpolateNumber(start.seconds, end.seconds, ratio),
+    elapsed,
+    cumulativeDistance: interpolateNumber(start.cumulativeDistance, end.cumulativeDistance, ratio),
+    smoothedAltitude: interpolateNumber(start.smoothedAltitude, end.smoothedAltitude, ratio),
+  };
+}
+
+export function flightSnapshotAtProgress(analysis: FlightAnalysis, progress: number): FlightSnapshot {
+  const normalized = Math.min(1, Math.max(0, Number.isFinite(progress) ? progress : 1));
+  if (normalized >= 1) return { points: analysis.points, stats: analysis.stats };
+
+  const fullPoints = analysis.points;
+  const cutoff = analysis.stats.duration * normalized;
+  let low = 0;
+  let high = fullPoints.length - 1;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (fullPoints[middle].elapsed <= cutoff) low = middle;
+    else high = middle - 1;
+  }
+
+  const visiblePoints = fullPoints.slice(0, low + 1);
+  const lastKnown = visiblePoints.at(-1)!;
+  const next = fullPoints[low + 1];
+  if (next && cutoff > lastKnown.elapsed) {
+    visiblePoints.push(interpolatedPoint(lastKnown, next, cutoff));
+  }
+
+  const first = visiblePoints[0];
+  const last = visiblePoints.at(-1)!;
+  let maxAltitude = first.smoothedAltitude;
+  let minAltitude = first.smoothedAltitude;
+  let maxVario = Number.NEGATIVE_INFINITY;
+  let minVario = Number.POSITIVE_INFINITY;
+  let windowStart = 0;
+  for (let index = 1; index < visiblePoints.length; index += 1) {
+    const point = visiblePoints[index];
+    maxAltitude = Math.max(maxAltitude, point.smoothedAltitude);
+    minAltitude = Math.min(minAltitude, point.smoothedAltitude);
+    while (windowStart < index - 1 && point.seconds - visiblePoints[windowStart].seconds > 8) {
+      windowStart += 1;
+    }
+    const deltaTime = point.seconds - visiblePoints[windowStart].seconds;
+    if (deltaTime >= 3) {
+      const vario = (point.smoothedAltitude - visiblePoints[windowStart].smoothedAltitude) / deltaTime;
+      maxVario = Math.max(maxVario, vario);
+      minVario = Math.min(minVario, vario);
+    }
+  }
+
+  let motionStart = Math.max(0, visiblePoints.length - 2);
+  while (motionStart > 0 && last.seconds - visiblePoints[motionStart].seconds < 5) {
+    motionStart -= 1;
+  }
+  const motionDuration = last.seconds - visiblePoints[motionStart].seconds;
+  const totalDistance = last.cumulativeDistance;
+  const distanceFraction = analysis.stats.totalDistance > 0
+    ? totalDistance / analysis.stats.totalDistance
+    : normalized;
+
+  return {
+    points: visiblePoints,
+    stats: {
+      totalDistance,
+      distanceFromTakeoff: haversine(first, last),
+      openDistance: analysis.stats.openDistance * distanceFraction,
+      triangleDistance: analysis.stats.triangleDistance * distanceFraction,
+      duration: last.elapsed,
+      averageSpeed: last.elapsed > 0 ? totalDistance / last.elapsed : 0,
+      currentSpeed: motionDuration > 0
+        ? (last.cumulativeDistance - visiblePoints[motionStart].cumulativeDistance) / motionDuration
+        : 0,
+      maxAltitude,
+      minAltitude,
+      elevationGain: Math.max(0, maxAltitude - first.smoothedAltitude),
+      maxVario: Number.isFinite(maxVario) ? maxVario : 0,
+      minVario: Number.isFinite(minVario) ? minVario : 0,
+      currentVario: motionDuration > 0
+        ? (last.smoothedAltitude - visiblePoints[motionStart].smoothedAltitude) / motionDuration
+        : 0,
+    },
   };
 }

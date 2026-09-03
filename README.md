@@ -7,8 +7,8 @@ Everything runs in the browser. Uploaded flight logs and media are not sent to a
 ## What it does
 
 - Parses standard IGC `B` records directly in the browser
-- Draws the flight track, elevation profile, grouped statistics, and paraglider mark as directly editable canvas elements
-- Calculates total track length, a three-turnpoint route estimate, a triangle estimate, duration, average speed, maximum elevation, elevation gain, maximum climb, and maximum sink
+- Draws the flight track, elevation profile, and grouped statistics as directly editable canvas elements
+- Calculates total track length, distance from takeoff, a three-turnpoint route estimate, a triangle estimate, duration, average/current speed, maximum elevation, elevation gain, maximum climb/sink, and current vario
 - Switches between metric and imperial units
 - Lets the user choose which elements and statistics appear
 - Supports dark glass, light glass, and panel-free styles
@@ -16,11 +16,14 @@ Everything runs in the browser. Uploaded flight logs and media are not sent to a
 - Keeps all enabled statistics together in one movable grid with selectable column-by-row layouts
 - Adjusts statistic labels and values with separate font-size controls
 - Keeps the centered overlay panel and every element visible in a single-screen desktop and mobile editor
-- Adjusts panel size, opacity, text color, accent color, and media fit from a vertically scrolling contextual inspector
+- Adjusts panel size, opacity, text color, and media fit from a vertically scrolling contextual inspector
 - Gives the track and altitude graph independent colors, line widths, and sizes
-- Adds optional start, maximum, and landing altitude labels in the selected unit system
+- Adds optional start, maximum, and landing altitude labels with their own font-size control
 - Places a larger track inside the centered panel by default, with North-up, automatic best-fit, slider, and direct rotation controls
-- Uses clean Strava-inspired sticker typography without text outlines and includes one optional paraglider silhouette
+- Uses clean Strava-inspired sticker typography without text outlines
+- Animates the route, altitude profile, and live statistics using the IGC timestamps
+- Fits an animated flight to the full length of an uploaded video, or offers 120×–960× speeds for photos and the built-in canvas
+- Uses a 1080 × 566 Instagram landscape canvas when no photo or video is loaded
 - Downloads full-resolution photos as maximum-quality JPEG files
 - Downloads a full-resolution transparent PNG containing only the overlay for use as a sticker
 - Records videos as MP4 in real time when the browser supports MP4 MediaRecorder output
@@ -103,6 +106,7 @@ The optimized open-distance and triangle values are estimates for a visual overl
 - Transparent sticker export uses the same pixel dimensions as the loaded photo or video, making it easy to align in another editor.
 - MP4 video export depends on the codecs exposed by the browser. The app checks support before recording and shows a compatibility message instead of creating a mislabeled file.
 - Video export runs in real time. A five-minute source takes about five minutes to record.
+- Animated photo export also records in real time at the selected fast-forward speed. For example, a four-hour flight at 480× takes about 30 seconds to export.
 - Original audio is included when the browser exposes the video's audio track. If it does not, the exported video is silent.
 - Very large or 4K videos can use substantial memory. Closing other media-heavy tabs helps.
 - A video codec must be playable by the browser before it can be exported.

@@ -78,9 +78,9 @@ export const STAT_OPTIONS: Array<{ key: StatKey; label: string }> = [
 ];
 
 export const DEFAULT_ELEMENT_FRAMES: OverlayElementFrames = {
-  track: { x: 0.08, y: 0.105, width: 0.84, height: 0.415 },
-  elevation: { x: 0.025, y: 0.53, width: 0.95, height: 0.18 },
-  stats: { x: 0.08, y: 0.735, width: 0.84, height: 0.22 },
+  track: { x: 0, y: 0, width: 1, height: 0.64 },
+  stats: { x: 0, y: 0.64, width: 1, height: 0.18 },
+  elevation: { x: 0, y: 0.82, width: 1, height: 0.18 },
 };
 
 export function createDefaultElementFrames(): OverlayElementFrames {
@@ -104,12 +104,12 @@ export function createDefaultSettings(): OverlaySettings {
     trackOrientation: "north-up",
     trackRotation: 0,
     showCompass: false,
-    statLabelFontSize: 13,
-    statValueFontSize: 27,
+    statLabelFontSize: 25,
+    statValueFontSize: 60,
     statColumns: 2,
-    trackLineWidth: 3,
-    elevationLineWidth: 2.5,
-    elevationLabelFontSize: 12,
+    trackLineWidth: 6,
+    elevationLineWidth: 6,
+    elevationLabelFontSize: 24,
     showStartAltitude: true,
     showMaxAltitude: true,
     showLandingAltitude: true,
@@ -629,7 +629,7 @@ export function formatStat(key: StatKey, stats: FlightStats, units: UnitSystem) 
     case "distanceFromTakeoff":
       return { label: "From takeoff", value: `${compactDistance(stats.distanceFromTakeoff, metric ? 1_000 : 1_609.344)} ${metric ? "km" : "mi"}` };
     case "openDistance":
-      return { label: "3 turn points", value: `${compactDistance(stats.openDistance, metric ? 1_000 : 1_609.344)} ${metric ? "km" : "mi"}` };
+      return { label: "Distance", value: `${compactDistance(stats.openDistance, metric ? 1_000 : 1_609.344)} ${metric ? "km" : "mi"}` };
     case "triangleDistance":
       return { label: "Triangle", value: `${compactDistance(stats.triangleDistance, metric ? 1_000 : 1_609.344)} ${metric ? "km" : "mi"}` };
     case "duration":

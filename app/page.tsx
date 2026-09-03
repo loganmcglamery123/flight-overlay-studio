@@ -52,7 +52,7 @@ import {
 
 type MediaKind = "image" | "video";
 
-const INSTAGRAM_LANDSCAPE_SIZE = { width: 1_080, height: 566 };
+const INSTAGRAM_VERTICAL_SIZE = { width: 1_080, height: 1_920 };
 const ANIMATED_STAT_DEFAULTS: StatKey[] = [
   "distanceFromTakeoff",
   "currentSpeed",
@@ -280,9 +280,7 @@ export default function Home() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
-  const [videoProgress, setVideoProgress] = useState(0);
   const [videoPlaying, setVideoPlaying] = useState(false);
-  const [photoAnimationProgress, setPhotoAnimationProgress] = useState(0);
   const [photoAnimationPlaying, setPhotoAnimationPlaying] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
@@ -306,7 +304,7 @@ export default function Home() {
   });
 
   const previewSize = useMemo(() => {
-    if (!media?.width || !media.height) return INSTAGRAM_LANDSCAPE_SIZE;
+    if (!media?.width || !media.height) return INSTAGRAM_VERTICAL_SIZE;
     const aspect = media.width / media.height;
     if (aspect >= 1) return { width: 1_200, height: Math.max(420, Math.round(1_200 / aspect)) };
     return { width: Math.max(520, Math.round(1_000 * aspect)), height: 1_000 };
@@ -467,7 +465,6 @@ export default function Home() {
         : 0;
       drawPreviewRef.current(progress);
       if (video && !video.paused && !video.ended) {
-        setVideoProgress(video.currentTime);
         animationRef.current = requestAnimationFrame(tick);
       } else {
         animationRef.current = null;
@@ -494,7 +491,6 @@ export default function Home() {
     if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
     if (photoAnimationProgressRef.current >= 0.999_999) {
       photoAnimationProgressRef.current = 0;
-      setPhotoAnimationProgress(0);
     }
     const playbackDuration = Math.max(0.6, analysis.stats.duration / settings.photoAnimationSpeed);
     photoAnimationStartedAtRef.current = performance.now()
@@ -504,7 +500,6 @@ export default function Home() {
     const tick = (time: number) => {
       const progress = Math.min(1, (time - photoAnimationStartedAtRef.current) / (playbackDuration * 1_000));
       photoAnimationProgressRef.current = progress;
-      setPhotoAnimationProgress(progress);
       drawPreviewRef.current(progress);
       if (progress < 1) animationRef.current = requestAnimationFrame(tick);
       else {
@@ -525,12 +520,10 @@ export default function Home() {
     animationRef.current = null;
     setPhotoAnimationPlaying(false);
     photoAnimationProgressRef.current = 0;
-    setPhotoAnimationProgress(0);
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.currentTime = 0;
     }
-    setVideoProgress(0);
     setSettings((current) => {
       if (enabled && !current.animateTrack) staticStatsRef.current = [...current.enabledStats];
       return {
@@ -554,7 +547,6 @@ export default function Home() {
       setAnalysis(parsed);
       setIgcName(file.name);
       photoAnimationProgressRef.current = 0;
-      setPhotoAnimationProgress(0);
       setMessage(
         `Loaded ${parsed.points.length.toLocaleString("en-US")} fixes${parsed.ignoredFixes ? `; ignored ${parsed.ignoredFixes} invalid fixes` : ""}.`,
       );
@@ -580,7 +572,6 @@ export default function Home() {
     animationRef.current = null;
     setPhotoAnimationPlaying(false);
     photoAnimationProgressRef.current = 0;
-    setPhotoAnimationProgress(0);
     if (mediaUrlRef.current) URL.revokeObjectURL(mediaUrlRef.current);
     const url = URL.createObjectURL(file);
     mediaUrlRef.current = url;
@@ -588,7 +579,6 @@ export default function Home() {
     imageRef.current = null;
     const kind: MediaKind = file.type.startsWith("video/") ? "video" : "image";
     setMedia({ file, kind, url, width: 0, height: 0, duration: 0 });
-    setVideoProgress(0);
     setVideoPlaying(false);
 
     if (kind === "video") {
@@ -696,6 +686,7 @@ export default function Home() {
     setError(null);
     if (video.paused) {
       try {
+        if (video.ended || video.currentTime >= video.duration - 0.05) video.currentTime = 0;
         await video.play();
       } catch {
         setError("This browser blocked video playback. Tap the preview and try again.");
@@ -732,14 +723,14 @@ export default function Home() {
     setMessage(null);
     try {
       const canvas = document.createElement("canvas");
-      canvas.width = media?.width || INSTAGRAM_LANDSCAPE_SIZE.width;
-      canvas.height = media?.height || INSTAGRAM_LANDSCAPE_SIZE.height;
+      canvas.width = media?.width || INSTAGRAM_VERTICAL_SIZE.width;
+      canvas.height = media?.height || INSTAGRAM_VERTICAL_SIZE.height;
       renderComposite(canvas, null, analysis, settings, true, 1);
       const blob = await canvasToBlob(canvas);
       downloadBlob(blob, `${exportBaseName()}-sticker.png`);
       setMessage(media
         ? "Downloaded a transparent PNG at the source dimensions."
-        : "Downloaded a transparent Instagram-landscape PNG.");
+        : "Downloaded a transparent Instagram-vertical PNG.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The transparent sticker could not be exported.");
     }
@@ -775,8 +766,8 @@ export default function Home() {
 
     try {
       const canvas = document.createElement("canvas");
-      canvas.width = media?.width || INSTAGRAM_LANDSCAPE_SIZE.width;
-      canvas.height = media?.height || INSTAGRAM_LANDSCAPE_SIZE.height;
+      canvas.width = media?.width || INSTAGRAM_VERTICAL_SIZE.width;
+      canvas.height = media?.height || INSTAGRAM_VERTICAL_SIZE.height;
       const activeOutputStream = canvas.captureStream(30);
       outputStream = activeOutputStream;
       const recorder = new MediaRecorder(activeOutputStream, {
@@ -991,16 +982,22 @@ export default function Home() {
     setElementsOpen(false);
     setError(null);
     setMessage(null);
-    setVideoProgress(0);
     setVideoPlaying(false);
     photoAnimationProgressRef.current = 0;
-    setPhotoAnimationProgress(0);
     setPhotoAnimationPlaying(false);
     staticStatsRef.current = createDefaultSettings().enabledStats;
   };
 
-  const selectedFrame = selectedElement ? settings.elementFrames[selectedElement] : null;
   const readyToExport = Boolean(analysis && (!media || mediaReady));
+  const playbackAvailable = Boolean(analysis && (
+    (media?.kind === "video" && mediaReady)
+    || (media?.kind !== "video" && settings.animateTrack)
+  ));
+  const previewPlaying = media?.kind === "video" ? videoPlaying : photoAnimationPlaying;
+  const togglePreviewPlayback = () => {
+    if (media?.kind === "video") void toggleVideoPlayback();
+    else togglePhotoPlayback();
+  };
   const primaryExportLabel = media?.kind === "video" || settings.animateTrack
     ? "MP4"
     : media?.kind === "image"
@@ -1059,21 +1056,30 @@ export default function Home() {
           </div>
           <div className="header-actions">
             <span className="privacy-pill"><ShieldCheck aria-hidden="true" /> Local processing</span>
+            {analysis && media && !exporting && (
+              <Button variant="outline" size="sm" disabled={!readyToExport} onClick={() => void exportSticker()}>
+                <Sticker aria-hidden="true" /> <span className="header-button-label">Sticker PNG</span>
+              </Button>
+            )}
+            {playbackAvailable && !exporting && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={togglePreviewPlayback}
+                aria-label={previewPlaying ? "Pause preview" : "Play preview"}
+              >
+                {previewPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+                <span className="header-button-label">{previewPlaying ? "Pause" : "Play"}</span>
+              </Button>
+            )}
             {analysis && (exporting ? (
               <Button variant="outline" size="sm" onClick={cancelExport}>
                 <X aria-hidden="true" /> <span className="header-button-label">Cancel {Math.round(exportProgress * 100)}%</span>
               </Button>
             ) : (
-              <>
-                {media && (
-                  <Button variant="outline" size="sm" disabled={!readyToExport} onClick={() => void exportSticker()}>
-                    <Sticker aria-hidden="true" /> <span className="header-button-label">Sticker PNG</span>
-                  </Button>
-                )}
-                <Button size="sm" disabled={!readyToExport} onClick={exportPrimary}>
-                  <Download aria-hidden="true" /> <span className="header-button-label">Download </span>{primaryExportLabel}
-                </Button>
-              </>
+              <Button size="sm" disabled={!readyToExport} onClick={exportPrimary}>
+                <Download aria-hidden="true" /> <span className="header-button-label">Download </span>{primaryExportLabel}
+              </Button>
             ))}
             {(analysis || media) && (
               <Button variant="ghost" size="sm" onClick={reset}><RotateCcw aria-hidden="true" /> <span className="header-button-label">Start over</span></Button>
@@ -1303,62 +1309,6 @@ export default function Home() {
           {!analysis && <p className="canvas-tip">Add an IGC track and media above to begin.</p>}
           {analysis && <p className="canvas-tip">Tap an overlay item, then drag, resize, rotate, or remove it.</p>}
 
-          {media?.kind === "video" && mediaReady && (
-            <div className="video-controls video-controls--floating">
-              <Button variant="outline" size="icon" onClick={toggleVideoPlayback} disabled={exporting} aria-label={videoPlaying ? "Pause video" : "Play video"}>
-                {videoPlaying ? <Pause /> : <Play />}
-              </Button>
-              <input
-                type="range"
-                min={0}
-                max={media.duration || 0}
-                step={0.05}
-                value={videoProgress}
-                disabled={exporting}
-                aria-label="Video position"
-                onChange={(event) => {
-                  const value = Number(event.target.value);
-                  if (videoRef.current) videoRef.current.currentTime = value;
-                  setVideoProgress(value);
-                  drawPreviewRef.current();
-                }}
-              />
-              <span>{formatDuration(videoProgress)} / {formatDuration(media.duration)}</span>
-            </div>
-          )}
-
-          {analysis && settings.animateTrack && media?.kind !== "video" && (
-            <div className="video-controls video-controls--floating">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={togglePhotoPlayback}
-                disabled={exporting}
-                aria-label={photoAnimationPlaying ? "Pause animation" : "Play animation"}
-              >
-                {photoAnimationPlaying ? <Pause /> : <Play />}
-              </Button>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.001}
-                value={photoAnimationProgress}
-                disabled={exporting}
-                aria-label="Animation position"
-                onChange={(event) => {
-                  stopPhotoAnimation();
-                  const value = Number(event.target.value);
-                  photoAnimationProgressRef.current = value;
-                  setPhotoAnimationProgress(value);
-                  drawPreviewRef.current(value);
-                }}
-              />
-              <span>
-                {formatDuration(analysis.stats.duration * photoAnimationProgress)} / {formatDuration(analysis.stats.duration)} · {settings.photoAnimationSpeed}×
-              </span>
-            </div>
-          )}
         </section>
 
         <section className="inspector-dock" aria-label="Selected element settings">
@@ -1371,31 +1321,6 @@ export default function Home() {
           </div>
 
           <div className="inspector-scroll">
-            {selectedFrame && selectedElement !== "stats" && (
-              <>
-                <RangeField
-                  id="element-width"
-                  label="Width"
-                  min={frameMinimum(selectedElement!).width}
-                  max={1 - selectedFrame.x}
-                  step={0.01}
-                  value={selectedFrame.width}
-                  display={`${Math.round(selectedFrame.width * 100)}%`}
-                  onChange={(value) => updateElementFrame(selectedElement!, { width: value })}
-                />
-                <RangeField
-                  id="element-height"
-                  label="Height"
-                  min={frameMinimum(selectedElement!).height}
-                  max={1 - selectedFrame.y}
-                  step={0.01}
-                  value={selectedFrame.height}
-                  display={`${Math.round(selectedFrame.height * 100)}%`}
-                  onChange={(value) => updateElementFrame(selectedElement!, { height: value })}
-                />
-              </>
-            )}
-
             {selectedElement === "track" && (
               <>
                 <ColorField id="track-color" label="Track color" value={settings.trackColor} onChange={(value) => updateSettings("trackColor", value)} />

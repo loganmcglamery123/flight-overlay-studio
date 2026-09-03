@@ -20,10 +20,12 @@ Everything runs in the browser. Uploaded flight logs and media are not sent to a
 - Gives the track and altitude graph independent colors, line widths, and sizes
 - Adds optional start, maximum, and landing altitude labels with their own font-size control
 - Places a larger track inside the centered panel by default, with North-up, automatic best-fit, slider, and direct rotation controls
+- Defaults to a 64% track area, an 18% two-by-two statistics area, and an 18% altitude graph stacked from top to bottom
 - Uses clean Strava-inspired sticker typography without text outlines
 - Animates the route, altitude profile, and live statistics using the IGC timestamps
 - Fits an animated flight to the full length of an uploaded video, or offers 120×–960× speeds for photos and the built-in canvas
-- Uses a 1080 × 566 Instagram landscape canvas when no photo or video is loaded
+- Uses a 1080 × 1920 Instagram vertical canvas when no photo or video is loaded
+- Keeps preview play and pause controls in the header so the image remains unobstructed
 - Downloads full-resolution photos as maximum-quality JPEG files
 - Downloads a full-resolution transparent PNG containing only the overlay for use as a sticker
 - Records videos as MP4 in real time when the browser supports MP4 MediaRecorder output

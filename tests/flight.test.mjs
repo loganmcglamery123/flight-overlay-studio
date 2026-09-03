@@ -62,7 +62,7 @@ test("rejects a file without a usable track", async () => {
 });
 
 test("formats altitude labels and exposes direct-edit overlay defaults", async () => {
-  const { DEFAULT_SETTINGS, findBestFitRotation, formatAltitude } = await vite.ssrLoadModule("/lib/render-overlay.ts");
+  const { DEFAULT_SETTINGS, findBestFitRotation, formatAltitude, formatStat } = await vite.ssrLoadModule("/lib/render-overlay.ts");
 
   assert.equal(formatAltitude(1_000, "metric"), "1,000 m");
   assert.equal(formatAltitude(1_000, "imperial"), "3,281 ft");
@@ -74,12 +74,15 @@ test("formats altitude labels and exposes direct-edit overlay defaults", async (
   assert.equal(DEFAULT_SETTINGS.trackOrientation, "north-up");
   assert.ok(DEFAULT_SETTINGS.panelWidth > 0.85);
   assert.ok(DEFAULT_SETTINGS.panelHeight > 0.85);
-  assert.ok(DEFAULT_SETTINGS.elementFrames.track.width > 0.8);
-  assert.ok(DEFAULT_SETTINGS.elementFrames.track.height > 0.4);
-  assert.ok(DEFAULT_SETTINGS.elementFrames.stats.width > 0.8);
+  assert.deepEqual(DEFAULT_SETTINGS.elementFrames.track, { x: 0, y: 0, width: 1, height: 0.64 });
+  assert.deepEqual(DEFAULT_SETTINGS.elementFrames.stats, { x: 0, y: 0.64, width: 1, height: 0.18 });
+  assert.deepEqual(DEFAULT_SETTINGS.elementFrames.elevation, { x: 0, y: 0.82, width: 1, height: 0.18 });
   assert.equal(DEFAULT_SETTINGS.statColumns, 2);
-  assert.ok(DEFAULT_SETTINGS.statValueFontSize > DEFAULT_SETTINGS.statLabelFontSize);
-  assert.equal(DEFAULT_SETTINGS.elevationLabelFontSize, 12);
+  assert.equal(DEFAULT_SETTINGS.statLabelFontSize, 25);
+  assert.equal(DEFAULT_SETTINGS.statValueFontSize, 60);
+  assert.equal(DEFAULT_SETTINGS.trackLineWidth, 6);
+  assert.equal(DEFAULT_SETTINGS.elevationLineWidth, 6);
+  assert.equal(DEFAULT_SETTINGS.elevationLabelFontSize, 24);
   assert.equal(DEFAULT_SETTINGS.animateTrack, false);
   assert.equal(DEFAULT_SETTINGS.photoAnimationSpeed, 480);
   assert.equal(DEFAULT_SETTINGS.showCompass, false);
@@ -89,6 +92,7 @@ test("formats altitude labels and exposes direct-edit overlay defaults", async (
     "maxAltitude",
     "averageSpeed",
   ]);
+  assert.equal(formatStat("openDistance", { openDistance: 1_000 }, "metric").label, "Distance");
 
   const rotation = findBestFitRotation(
     [{ x: 0, y: 0 }, { x: 0, y: 5 }, { x: 0, y: 10 }],

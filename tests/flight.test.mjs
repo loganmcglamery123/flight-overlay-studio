@@ -34,6 +34,10 @@ test("parses valid B records and computes core flight statistics", async () => {
   assert.ok(result.stats.totalDistance > 3_000);
   assert.ok(result.stats.openDistance > 0);
   assert.ok(result.stats.triangleDistance > 0);
+  assert.equal(
+    result.stats.elevationGain,
+    result.stats.maxAltitude - result.points[0].smoothedAltitude,
+  );
   assert.equal(result.metadata.date, "2026-08-01");
   assert.equal(result.metadata.pilot, "Test Pilot");
 });
@@ -43,21 +47,34 @@ test("rejects a file without a usable track", async () => {
   assert.throws(() => parseIgc("AXXX\nHFDTE010826"), /two valid IGC B-record fixes/);
 });
 
-test("formats altitude labels and exposes independent graph defaults", async () => {
+test("formats altitude labels and exposes direct-edit overlay defaults", async () => {
   const { DEFAULT_SETTINGS, findBestFitRotation, formatAltitude } = await vite.ssrLoadModule("/lib/render-overlay.ts");
 
   assert.equal(formatAltitude(1_000, "metric"), "1,000 m");
   assert.equal(formatAltitude(1_000, "imperial"), "3,281 ft");
-  assert.equal(DEFAULT_SETTINGS.graphLayout, "stacked");
   assert.notEqual(DEFAULT_SETTINGS.trackColor, DEFAULT_SETTINGS.elevationColor);
   assert.equal(DEFAULT_SETTINGS.showStartAltitude, true);
   assert.equal(DEFAULT_SETTINGS.showMaxAltitude, true);
   assert.equal(DEFAULT_SETTINGS.showLandingAltitude, true);
-  assert.equal(DEFAULT_SETTINGS.trackPlacement, "canvas-center");
+  assert.equal(DEFAULT_SETTINGS.style, "minimal");
   assert.equal(DEFAULT_SETTINGS.trackOrientation, "north-up");
-  assert.ok(DEFAULT_SETTINGS.trackCoverage > 0.5);
+  assert.ok(DEFAULT_SETTINGS.panelWidth > 0.85);
+  assert.ok(DEFAULT_SETTINGS.panelHeight > 0.85);
+  assert.ok(DEFAULT_SETTINGS.elementFrames.track.width > 0.8);
+  assert.ok(DEFAULT_SETTINGS.elementFrames.track.height > 0.4);
+  assert.equal(
+    DEFAULT_SETTINGS.elementFrames.sportIcon.x + DEFAULT_SETTINGS.elementFrames.sportIcon.width / 2,
+    0.5,
+  );
+  assert.ok(DEFAULT_SETTINGS.elementFrames.sportIcon.y > 0.9);
   assert.equal(DEFAULT_SETTINGS.showCompass, true);
   assert.equal(DEFAULT_SETTINGS.sportIcon, "paraglider");
+  assert.deepEqual(DEFAULT_SETTINGS.enabledStats, [
+    "openDistance",
+    "duration",
+    "maxAltitude",
+    "averageSpeed",
+  ]);
 
   const rotation = findBestFitRotation(
     [{ x: 0, y: 0 }, { x: 0, y: 5 }, { x: 0, y: 10 }],

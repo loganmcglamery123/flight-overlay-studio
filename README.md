@@ -7,15 +7,17 @@ Everything runs in the browser. Uploaded flight logs and media are not sent to a
 ## What it does
 
 - Parses standard IGC `B` records directly in the browser
-- Draws the flight track and an elevation profile in a stacked or side-by-side layout
+- Draws the flight track, elevation profile, statistics, and flight-sport mark as directly editable canvas elements
 - Calculates total track length, a three-turnpoint route estimate, a triangle estimate, duration, average speed, maximum elevation, elevation gain, maximum climb, and maximum sink
 - Switches between metric and imperial units
 - Lets the user choose which elements and statistics appear
 - Supports dark glass, light glass, and panel-free styles
-- Adjusts overlay width, content scale, position, opacity, text color, accent color, and media fit
+- Lets each element be dragged, resized, or removed directly on the photo with mouse, touch, or keyboard controls
+- Keeps the centered overlay panel and every element visible in a single-screen desktop and mobile editor
+- Adjusts panel size, opacity, text color, accent color, and media fit from a compact contextual inspector
 - Gives the track and altitude graph independent colors, line widths, and sizes
 - Adds optional start, maximum, and landing altitude labels in the selected unit system
-- Centers the track in a large canvas area by default, with North-up, automatic best-fit, and manual rotation modes
+- Places a larger track inside the centered panel by default, with North-up, automatic best-fit, slider, and direct rotation controls
 - Includes an optional rotating compass and paraglider, hang-glider, or sailplane mark
 - Downloads full-resolution photos as maximum-quality JPEG files
 - Downloads a full-resolution transparent PNG containing only the overlay for use as a sticker
@@ -87,7 +89,7 @@ npm run preview:github
 - **Average speed** is total track length divided by elapsed track time, so time spent circling or stationary remains included.
 - **3 turn points** finds the longest chronologically ordered four-leg route: start, three turn points, and finish. The track is sampled for browser performance.
 - **Triangle** finds the largest three-point perimeter in a sampled version of the track.
-- **Elevation gain** sums positive changes after a five-fix median smoothing pass.
+- **Elevation gain** is maximum smoothed altitude minus smoothed takeoff altitude, with a minimum of zero.
 - **Max climb and sink** use short multi-second windows on the smoothed altitude series to reduce one-fix GPS noise.
 - Fixes marked invalid, duplicate/non-increasing timestamps, and jumps requiring more than 250 km/h groundspeed are ignored.
 

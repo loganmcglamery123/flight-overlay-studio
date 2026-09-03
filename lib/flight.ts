@@ -293,14 +293,10 @@ export function parseIgc(text: string): FlightAnalysis {
     };
   });
 
-  let elevationGain = 0;
   let maxVario = Number.NEGATIVE_INFINITY;
   let minVario = Number.POSITIVE_INFINITY;
   let windowStart = 0;
   for (let index = 1; index < points.length; index += 1) {
-    const rise = points[index].smoothedAltitude - points[index - 1].smoothedAltitude;
-    if (rise > 0) elevationGain += rise;
-
     while (windowStart < index - 1 && points[index].seconds - points[windowStart].seconds > 8) {
       windowStart += 1;
     }
@@ -316,6 +312,8 @@ export function parseIgc(text: string): FlightAnalysis {
   const open = optimizeOpenDistance(points);
   const triangle = optimizeTriangle(points);
   const smoothedAltitudes = points.map((point) => point.smoothedAltitude);
+  const maxAltitude = Math.max(...smoothedAltitudes);
+  const elevationGain = Math.max(0, maxAltitude - points[0].smoothedAltitude);
 
   return {
     points,
@@ -325,7 +323,7 @@ export function parseIgc(text: string): FlightAnalysis {
       triangleDistance: triangle.distance,
       duration,
       averageSpeed: duration > 0 ? cumulativeDistance / duration : 0,
-      maxAltitude: Math.max(...smoothedAltitudes),
+      maxAltitude,
       minAltitude: Math.min(...smoothedAltitudes),
       elevationGain,
       maxVario: Number.isFinite(maxVario) ? maxVario : 0,

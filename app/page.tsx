@@ -12,6 +12,7 @@ import {
   RotateCcw,
   ShieldCheck,
   SlidersHorizontal,
+  Sticker,
   Upload,
   Video,
   X,
@@ -41,7 +42,10 @@ import {
   type OverlayPosition,
   type OverlaySettings,
   type OverlayStyle,
+  type SportIcon,
   type StatKey,
+  type TrackOrientation,
+  type TrackPlacement,
   type UnitSystem,
 } from "@/lib/render-overlay";
 
@@ -441,6 +445,23 @@ export default function Home() {
     }
   };
 
+  const exportSticker = async () => {
+    if (!analysis || !media || !media.width || !media.height) return;
+    setError(null);
+    setMessage(null);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = media.width;
+      canvas.height = media.height;
+      renderComposite(canvas, null, analysis, settings, true);
+      const blob = await canvasToBlob(canvas);
+      downloadBlob(blob, `${safeName(settings.title || media.file.name)}-sticker.png`);
+      setMessage("Transparent overlay sticker downloaded at the source media dimensions.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The transparent sticker could not be exported.");
+    }
+  };
+
   const cancelVideoExport = () => {
     exportRef.current.cancelled = true;
     videoRef.current?.pause();
@@ -758,7 +779,7 @@ export default function Home() {
                 </Select>
               </div>
               <div className="field-stack">
-                <Label htmlFor="position-select">Position</Label>
+                <Label htmlFor="position-select">Data position</Label>
                 <Select value={settings.position} onValueChange={(value) => updateSettings("position", value as OverlayPosition)}>
                   <SelectTrigger id="position-select" className="w-full">
                     <SelectValue />
@@ -813,10 +834,29 @@ export default function Home() {
               />
             </div>
 
+            <div className="field-stack sport-icon-field">
+              <Label htmlFor="sport-icon-select">Flight-sport mark</Label>
+              <Select
+                value={settings.sportIcon}
+                onValueChange={(value) => updateSettings("sportIcon", value as SportIcon)}
+              >
+                <SelectTrigger id="sport-icon-select" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="paraglider">Paraglider</SelectItem>
+                  <SelectItem value="hang-glider">Hang glider</SelectItem>
+                  <SelectItem value="sailplane">Sailplane</SelectItem>
+                  <SelectItem value="none">No mark</SelectItem>
+                </SelectContent>
+              </Select>
+              <p>Uses the accent color beside the flight title.</p>
+            </div>
+
             <div className="overlay-size-grid">
               <RangeField
                 id="overlay-width"
-                label="Overlay width"
+                label="Data panel width"
                 min={0.38}
                 max={0.9}
                 step={0.02}
@@ -836,7 +876,7 @@ export default function Home() {
               />
             </div>
 
-            {settings.showTrack && settings.showElevation && (
+            {settings.showTrack && settings.showElevation && settings.trackPlacement === "panel" && (
               <div className="field-stack graph-layout-field">
                 <Label htmlFor="graph-layout-select">Graph arrangement</Label>
                 <Select
@@ -860,9 +900,42 @@ export default function Home() {
                   <div className="graph-control-card__heading">
                     <div>
                       <h3 id="track-controls-title">Track outline</h3>
-                      <p>Includes takeoff and landing markers.</p>
+                      <p>Centered mode uses a large canvas area suited to landscape posts.</p>
                     </div>
                     <span className="graph-swatch" style={{ background: settings.trackColor }} aria-hidden="true" />
+                  </div>
+                  <div className="two-column-fields graph-select-grid">
+                    <div className="field-stack">
+                      <Label htmlFor="track-placement-select">Placement</Label>
+                      <Select
+                        value={settings.trackPlacement}
+                        onValueChange={(value) => updateSettings("trackPlacement", value as TrackPlacement)}
+                      >
+                        <SelectTrigger id="track-placement-select" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="canvas-center">Center of photo</SelectItem>
+                          <SelectItem value="panel">Inside data panel</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="field-stack">
+                      <Label htmlFor="track-orientation-select">Orientation</Label>
+                      <Select
+                        value={settings.trackOrientation}
+                        onValueChange={(value) => updateSettings("trackOrientation", value as TrackOrientation)}
+                      >
+                        <SelectTrigger id="track-orientation-select" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="north-up">North up</SelectItem>
+                          <SelectItem value="best-fit">Best fit (largest)</SelectItem>
+                          <SelectItem value="custom">Custom angle</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   <ColorField
                     id="track-color"
@@ -880,16 +953,52 @@ export default function Home() {
                     display={`${settings.trackLineWidth.toFixed(1)} px`}
                     onChange={(value) => updateSettings("trackLineWidth", value)}
                   />
-                  <RangeField
-                    id="track-height"
-                    label="Track size"
-                    min={0.6}
-                    max={1.7}
-                    step={0.05}
-                    value={settings.trackScale}
-                    display={`${Math.round(settings.trackScale * 100)}%`}
-                    onChange={(value) => updateSettings("trackScale", value)}
-                  />
+                  {settings.trackPlacement === "canvas-center" ? (
+                    <RangeField
+                      id="track-coverage"
+                      label="Canvas coverage"
+                      min={0.52}
+                      max={0.94}
+                      step={0.02}
+                      value={settings.trackCoverage}
+                      display={`${Math.round(settings.trackCoverage * 100)}%`}
+                      onChange={(value) => updateSettings("trackCoverage", value)}
+                    />
+                  ) : (
+                    <RangeField
+                      id="track-height"
+                      label="Track size"
+                      min={0.6}
+                      max={1.7}
+                      step={0.05}
+                      value={settings.trackScale}
+                      display={`${Math.round(settings.trackScale * 100)}%`}
+                      onChange={(value) => updateSettings("trackScale", value)}
+                    />
+                  )}
+                  {settings.trackOrientation === "custom" && (
+                    <RangeField
+                      id="track-rotation"
+                      label="Rotation"
+                      min={-180}
+                      max={180}
+                      step={1}
+                      value={settings.trackRotation}
+                      display={`${Math.round(settings.trackRotation)}°`}
+                      onChange={(value) => updateSettings("trackRotation", value)}
+                    />
+                  )}
+                  <div className="switch-row switch-row--inset graph-compass-toggle">
+                    <div>
+                      <Label htmlFor="compass-switch">Show compass</Label>
+                      <p>North rotates with the track in best-fit and custom modes.</p>
+                    </div>
+                    <Switch
+                      id="compass-switch"
+                      checked={settings.showCompass}
+                      onCheckedChange={(checked) => updateSettings("showCompass", checked)}
+                    />
+                  </div>
                 </section>
               )}
 
@@ -1034,8 +1143,8 @@ export default function Home() {
               <h2>{media?.kind === "video" ? "Export video" : "Export photo"}</h2>
               <p>
                 {media?.kind === "video"
-                  ? "MP4 export runs in real time and stays on this device."
-                  : "JPEG export uses the original resolution and maximum quality."}
+                  ? "MP4 export runs in real time. The sticker is a transparent PNG."
+                  : "JPEG keeps the original resolution. The sticker is a transparent PNG."}
               </p>
               {exporting && (
                 <div className="export-progress" aria-label={`Video export ${Math.round(exportProgress * 100)} percent complete`}>
@@ -1048,14 +1157,20 @@ export default function Home() {
                 <X /> Cancel export
               </Button>
             ) : (
-              <Button
-                className="export-button"
-                disabled={!readyToExport}
-                onClick={media?.kind === "video" ? exportVideo : exportImage}
-              >
-                <Download aria-hidden="true" />
-                {media?.kind === "video" ? "Download MP4" : "Download JPG"}
-              </Button>
+              <div className="export-actions">
+                <Button variant="outline" disabled={!readyToExport} onClick={exportSticker}>
+                  <Sticker aria-hidden="true" />
+                  Transparent PNG
+                </Button>
+                <Button
+                  className="export-button"
+                  disabled={!readyToExport}
+                  onClick={media?.kind === "video" ? exportVideo : exportImage}
+                >
+                  <Download aria-hidden="true" />
+                  {media?.kind === "video" ? "Download MP4" : "Download JPG"}
+                </Button>
+              </div>
             )}
           </div>
         </section>

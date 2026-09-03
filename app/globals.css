@@ -346,6 +346,17 @@ select {
   gap: 0.5rem;
 }
 
+.sport-icon-field {
+  margin-top: 1rem;
+}
+
+.sport-icon-field > p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
 .two-column-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -481,6 +492,15 @@ select {
 
 .graph-control-card .slider-field {
   margin-top: 0.95rem;
+}
+
+.graph-select-grid {
+  margin-top: 0;
+  margin-bottom: 0.9rem;
+}
+
+.graph-compass-toggle {
+  margin-top: 1rem;
 }
 
 .altitude-label-controls {
@@ -625,6 +645,13 @@ select {
   box-shadow: 0 0 24px rgba(217, 255, 67, 0.1);
 }
 
+.export-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
 .export-progress {
   width: min(20rem, 60vw);
   height: 0.2rem;
@@ -688,6 +715,12 @@ select {
 
   .export-bar button {
     width: 100%;
+  }
+
+  .export-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column-reverse;
   }
 
   .video-controls {

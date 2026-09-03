@@ -15,7 +15,10 @@ Everything runs in the browser. Uploaded flight logs and media are not sent to a
 - Adjusts overlay width, content scale, position, opacity, text color, accent color, and media fit
 - Gives the track and altitude graph independent colors, line widths, and sizes
 - Adds optional start, maximum, and landing altitude labels in the selected unit system
+- Centers the track in a large canvas area by default, with North-up, automatic best-fit, and manual rotation modes
+- Includes an optional rotating compass and paraglider, hang-glider, or sailplane mark
 - Downloads full-resolution photos as maximum-quality JPEG files
+- Downloads a full-resolution transparent PNG containing only the overlay for use as a sticker
 - Records videos as MP4 in real time when the browser supports MP4 MediaRecorder output
 - Deploys automatically to GitHub Pages after each push to `main`
 
@@ -93,6 +96,7 @@ The optimized open-distance and triangle values are estimates for a visual overl
 ## Browser notes
 
 - Photo export keeps the source pixel dimensions and uses the browser's maximum JPEG quality setting. JPEG encoding is still lossy, so it cannot be byte-for-byte identical to the source.
+- Transparent sticker export uses the same pixel dimensions as the loaded photo or video, making it easy to align in another editor.
 - MP4 video export depends on the codecs exposed by the browser. The app checks support before recording and shows a compatibility message instead of creating a mislabeled file.
 - Video export runs in real time. A five-minute source takes about five minutes to record.
 - Original audio is included when the browser exposes the video's audio track. If it does not, the exported video is silent.
